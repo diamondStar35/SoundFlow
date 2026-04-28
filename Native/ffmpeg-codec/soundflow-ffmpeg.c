@@ -27,6 +27,7 @@ struct SF_Decoder {
     sf_read_callback onRead;
     sf_seek_callback onSeek;
     void* pUserData;
+    SFSampleFormat target_format;
     int target_bytes_per_sample;
     int target_channels;
 };
@@ -108,6 +109,129 @@ static int write_packet_callback(void* opaque, const uint8_t* buf, int buf_size)
     return (int)bytes_written;
 }
 
+static void sf_decoder_reset_state(SF_Decoder* decoder) {
+    if (!decoder) {
+        return;
+    }
+
+    avcodec_free_context(&decoder->codec_ctx);
+
+    if (decoder->format_ctx) {
+        if (decoder->format_ctx->pb) {
+            av_freep(&decoder->format_ctx->pb->buffer);
+            avio_context_free(&decoder->format_ctx->pb);
+        }
+        avformat_close_input(&decoder->format_ctx);
+    }
+
+    av_packet_free(&decoder->packet);
+    av_frame_free(&decoder->frame);
+    swr_free(&decoder->swr_ctx);
+
+    decoder->stream_index = -1;
+    decoder->target_bytes_per_sample = 0;
+    decoder->target_channels = 0;
+}
+
+static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
+                                       SFSampleFormat target_format,
+                                       SFSampleFormat* out_native_format,
+                                       uint32_t* out_channels,
+                                       uint32_t* out_samplerate) {
+    if (!decoder) {
+        return SF_RESULT_ERROR_INVALID_ARGS;
+    }
+
+    decoder->target_format = target_format;
+
+    decoder->format_ctx = avformat_alloc_context();
+    if (!decoder->format_ctx) return SF_RESULT_ERROR_ALLOCATION_FAILED;
+    decoder->io_buffer = (uint8_t*)av_malloc(IO_BUFFER_SIZE);
+    if (!decoder->io_buffer) {
+        avformat_free_context(decoder->format_ctx);
+        decoder->format_ctx = NULL;
+        return SF_RESULT_ERROR_ALLOCATION_FAILED;
+    }
+
+    decoder->avio_ctx = avio_alloc_context(decoder->io_buffer, IO_BUFFER_SIZE, 0, decoder, read_packet_callback, NULL, seek_callback_wrapper);
+    if (!decoder->avio_ctx) {
+        av_free(decoder->io_buffer);
+        decoder->io_buffer = NULL;
+        avformat_free_context(decoder->format_ctx);
+        decoder->format_ctx = NULL;
+        return SF_RESULT_ERROR_ALLOCATION_FAILED;
+    }
+    decoder->format_ctx->pb = decoder->avio_ctx;
+
+    AVDictionary* options = NULL;
+    av_dict_set(&options, "scan_all_pmts", "0", 0);
+    av_dict_set(&options, "probesize", "5000000", 0);
+    av_dict_set(&options, "analyzeduration", "10000000", 0);
+
+    if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
+    if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
+
+    decoder->stream_index = av_find_best_stream(decoder->format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+    if (decoder->stream_index < 0) return SF_RESULT_DECODER_ERROR_NO_AUDIO_STREAM;
+
+    for (unsigned int i = 0; i < decoder->format_ctx->nb_streams; i++) {
+        if (i != decoder->stream_index) {
+            decoder->format_ctx->streams[i]->discard = AVDISCARD_ALL;
+        }
+    }
+
+    AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
+    const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
+    if (!codec) return SF_RESULT_DECODER_ERROR_CODEC_NOT_FOUND;
+
+    decoder->codec_ctx = avcodec_alloc_context3(codec);
+    if (!decoder->codec_ctx) return SF_RESULT_DECODER_ERROR_CODEC_CONTEXT_ALLOC;
+
+    avcodec_parameters_to_context(decoder->codec_ctx, stream->codecpar);
+    if (avcodec_open2(decoder->codec_ctx, codec, NULL) < 0) return SF_RESULT_DECODER_ERROR_CODEC_OPEN_FAILED;
+
+    if (out_channels) {
+        *out_channels = decoder->codec_ctx->ch_layout.nb_channels;
+    }
+    if (out_samplerate) {
+        *out_samplerate = decoder->codec_ctx->sample_rate;
+    }
+    if (out_native_format) {
+        *out_native_format = from_ffmpeg_sample_format(decoder->codec_ctx->sample_fmt);
+    }
+
+    enum AVSampleFormat target_av_format = to_ffmpeg_sample_format(target_format);
+    if (target_av_format == AV_SAMPLE_FMT_NONE) return SF_RESULT_DECODER_ERROR_INVALID_TARGET_FORMAT;
+
+    decoder->target_bytes_per_sample = av_get_bytes_per_sample(target_av_format);
+    decoder->target_channels = decoder->codec_ctx->ch_layout.nb_channels;
+
+    swr_alloc_set_opts2(&decoder->swr_ctx,
+                        &decoder->codec_ctx->ch_layout, target_av_format, decoder->codec_ctx->sample_rate,
+                        &decoder->codec_ctx->ch_layout, decoder->codec_ctx->sample_fmt, decoder->codec_ctx->sample_rate,
+                        0, NULL);
+    if (!decoder->swr_ctx || swr_init(decoder->swr_ctx) < 0) return SF_RESULT_DECODER_ERROR_RESAMPLER_INIT_FAILED;
+
+    decoder->packet = av_packet_alloc();
+    decoder->frame = av_frame_alloc();
+    if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
+
+    return SF_RESULT_SUCCESS;
+}
+
+static SF_Result sf_decoder_reopen_from_start(SF_Decoder* decoder) {
+    if (!decoder || !decoder->onSeek) {
+        return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
+    }
+
+    sf_decoder_reset_state(decoder);
+
+    if (decoder->onSeek(decoder->pUserData, 0, SEEK_SET) < 0) {
+        return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
+    }
+
+    return sf_decoder_open_input(decoder, decoder->target_format, NULL, NULL, NULL);
+}
 
 //  Decoder Implementation
 
@@ -126,67 +250,8 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->onRead = onRead;
     decoder->onSeek = onSeek;
     decoder->pUserData = pUserData;
-
-    decoder->format_ctx = avformat_alloc_context();
-    if (!decoder->format_ctx) return SF_RESULT_ERROR_ALLOCATION_FAILED;
-    decoder->io_buffer = (uint8_t*)av_malloc(IO_BUFFER_SIZE);
-    if (!decoder->io_buffer) { avformat_free_context(decoder->format_ctx); return SF_RESULT_ERROR_ALLOCATION_FAILED; }
-
-    decoder->avio_ctx = avio_alloc_context(decoder->io_buffer, IO_BUFFER_SIZE, 0, decoder, read_packet_callback, NULL, seek_callback_wrapper);
-    if (!decoder->avio_ctx) { av_free(decoder->io_buffer); avformat_free_context(decoder->format_ctx); return SF_RESULT_ERROR_ALLOCATION_FAILED; }
-    decoder->format_ctx->pb = decoder->avio_ctx;
-
-    // Add format context options to ignore non-audio streams
-    AVDictionary* options = NULL;
-    av_dict_set(&options, "scan_all_pmts", "0", 0);
-    av_dict_set(&options, "probesize", "5000000", 0);
-    av_dict_set(&options, "analyzeduration", "10000000", 0);
-
-    if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
-    if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
-
-    decoder->stream_index = av_find_best_stream(decoder->format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
-    if (decoder->stream_index < 0) return SF_RESULT_DECODER_ERROR_NO_AUDIO_STREAM;
-
-    // Ignore all non-audio streams
-    for (unsigned int i = 0; i < decoder->format_ctx->nb_streams; i++) {
-        if (i != decoder->stream_index) {
-            decoder->format_ctx->streams[i]->discard = AVDISCARD_ALL;
-        }
-    }
-
-    AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
-    const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
-    if (!codec) return SF_RESULT_DECODER_ERROR_CODEC_NOT_FOUND;
-
-    decoder->codec_ctx = avcodec_alloc_context3(codec);
-    if (!decoder->codec_ctx) return SF_RESULT_DECODER_ERROR_CODEC_CONTEXT_ALLOC;
-
-    avcodec_parameters_to_context(decoder->codec_ctx, stream->codecpar);
-    if (avcodec_open2(decoder->codec_ctx, codec, NULL) < 0) return SF_RESULT_DECODER_ERROR_CODEC_OPEN_FAILED;
-
-    *out_channels = decoder->codec_ctx->ch_layout.nb_channels;
-    *out_samplerate = decoder->codec_ctx->sample_rate;
-    *out_native_format = from_ffmpeg_sample_format(decoder->codec_ctx->sample_fmt);
-
-    enum AVSampleFormat target_av_format = to_ffmpeg_sample_format(target_format);
-    if (target_av_format == AV_SAMPLE_FMT_NONE) return SF_RESULT_DECODER_ERROR_INVALID_TARGET_FORMAT;
-
-    decoder->target_bytes_per_sample = av_get_bytes_per_sample(target_av_format);
-    decoder->target_channels = decoder->codec_ctx->ch_layout.nb_channels;
-
-    // Setup resampler to convert from native format to the requested target format
-    swr_alloc_set_opts2(&decoder->swr_ctx,
-                        &decoder->codec_ctx->ch_layout, target_av_format, decoder->codec_ctx->sample_rate,
-                        &decoder->codec_ctx->ch_layout, decoder->codec_ctx->sample_fmt, decoder->codec_ctx->sample_rate,
-                        0, NULL);
-    if (!decoder->swr_ctx || swr_init(decoder->swr_ctx) < 0) return SF_RESULT_DECODER_ERROR_RESAMPLER_INIT_FAILED;
-
-    decoder->packet = av_packet_alloc();
-    decoder->frame = av_frame_alloc();
-    if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
-
-    return SF_RESULT_SUCCESS;
+    decoder->stream_index = -1;
+    return sf_decoder_open_input(decoder, target_format, out_native_format, out_channels, out_samplerate);
 }
 
 SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
@@ -308,48 +373,37 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex) {
     if (!decoder || !decoder->format_ctx || decoder->stream_index < 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
+    if (frameIndex <= 0) {
+        // Reopen from byte zero so replay-from-start takes the exact same path as the first decode.
+        return sf_decoder_reopen_from_start(decoder);
+    }
+
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
     int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    // Flush buffers and seek
-    avcodec_flush_buffers(decoder->codec_ctx);
-    swr_init(decoder->swr_ctx);  // Reset resampler state
-
-    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
+    int ret = avformat_seek_file(decoder->format_ctx, decoder->stream_index, INT64_MIN, timestamp, INT64_MAX, 0);
     if (ret < 0) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
+    if (avformat_flush(decoder->format_ctx) < 0) {
+        return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
-    av_packet_free(&pkt);
+
+    avcodec_flush_buffers(decoder->codec_ctx);
+    swr_close(decoder->swr_ctx);
+    if (swr_init(decoder->swr_ctx) < 0) {
+        return SF_RESULT_DECODER_ERROR_RESAMPLER_INIT_FAILED;
+    }
+    av_packet_unref(decoder->packet);
+    av_frame_unref(decoder->frame);
 
     return SF_RESULT_SUCCESS;
 }
 
 SF_FFMPEG_API void sf_decoder_free(SF_Decoder* decoder) {
     if (!decoder) return;
-    avcodec_free_context(&decoder->codec_ctx);
-
-    // Custom IO context needs special handling for freeing
-    if (decoder->format_ctx) {
-        if (decoder->format_ctx->pb) {
-            av_freep(&decoder->format_ctx->pb->buffer);
-            avio_context_free(&decoder->format_ctx->pb);
-        }
-        avformat_close_input(&decoder->format_ctx);
-    }
-
-    av_packet_free(&decoder->packet);
-    av_frame_free(&decoder->frame);
-    swr_free(&decoder->swr_ctx);
+    sf_decoder_reset_state(decoder);
     free(decoder);
 }
 
@@ -427,17 +481,23 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     encoder->codec_ctx->time_base = (AVRational){1, sampleRate};
 
     // Suppress deprecation warnings for sample_fmts for compatibility.
+#if defined(__GNUC__) || defined(__clang__)
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
     // Choose the best sample format the encoder supports
     if (codec->sample_fmts) {
         encoder->codec_ctx->sample_fmt = codec->sample_fmts[0];
     } else {
+#if defined(__GNUC__) || defined(__clang__)
         #pragma GCC diagnostic pop
+#endif
         return SF_RESULT_ENCODER_ERROR_CODEC_NOT_FOUND;
     }
+#if defined(__GNUC__) || defined(__clang__)
     #pragma GCC diagnostic pop
+#endif
 
     if (encoder->format_ctx->oformat->flags & AVFMT_GLOBALHEADER)
         encoder->codec_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;

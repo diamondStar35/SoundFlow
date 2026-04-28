@@ -3,6 +3,9 @@ name: Build FFmpeg Codec Integration
 on:
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 # Cancel in-progress runs on new commits to the same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -284,63 +287,6 @@ jobs:
           name: soundflow-ffmpeg-android-${{ matrix.rid_arch }}
           path: Native/ffmpeg-codec/build/runtimes/android-${{ matrix.rid_arch }}/native/*
 
-  # FreeBSD build
-  build-freebsd:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            vm_arch: x86_64
-          - arch: arm64
-            vm_arch: arm64
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build in FreeBSD VM
-        uses: cross-platform-actions/action@v0.26.0
-        with:
-          operating_system: freebsd
-          version: '14.0'
-          architecture: ${{ matrix.vm_arch }}
-          run: |
-            cd Native/ffmpeg-codec
-            # Install dependencies
-            sudo pkg install -y cmake gmake nasm yasm pkgconf bash
-            # Create and enter build directory
-            mkdir build
-            cd build
-            # Configure and build
-            cmake .. \
-              -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_MAKE_PROGRAM=gmake
-            cmake --build . --parallel --verbose
-            
-            # Go back to project root
-            cd ..
-            # Analyze Dependencies
-            ARTIFACT_DIR="build/runtimes/freebsd-${{ matrix.arch }}/native"
-            echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
-            for lib in $ARTIFACT_DIR/*.so; do
-              if [ -f "$lib" ]; then
-                echo "=========================================="
-                echo "Analyzing: $(basename "$lib")"
-                echo "=========================================="
-                echo "=== File Info ==="
-                file "$lib"
-                echo -e "\n=== Dependencies ==="
-                ldd "$lib" || echo "ldd failed or no dependencies found."
-                echo -e "\n=== Exports (Exported Functions) ==="
-                nm -gD "$lib" | grep " T " || echo "No exported functions found."
-              fi
-            done
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: soundflow-ffmpeg-freebsd-${{ matrix.arch }}
-          path: Native/ffmpeg-codec/build/runtimes/freebsd-${{ matrix.arch }}/native/*
-
   # iOS build
   build-ios:
     runs-on: macos-latest
@@ -400,7 +346,6 @@ jobs:
       - build-linux
       - build-macos
       - build-android
-      - build-freebsd
       - build-ios
     steps:
       - name: Download all build artifacts

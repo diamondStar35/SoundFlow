@@ -32,11 +32,9 @@ on:
         required: true
         type: boolean
         default: true
-      release_portmidi:
-        description: 'Build and release the SoundFlow.Midi.PortMidi package?'
-        required: true
-        type: boolean
-        default: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: write
@@ -49,8 +47,7 @@ jobs:
     if: >
       inputs.release_soundflow_main == true ||
       inputs.release_ffmpeg == true ||
-      inputs.release_webrtc == true ||
-      inputs.release_portmidi == true
+      inputs.release_webrtc == true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -64,8 +61,7 @@ jobs:
         if: >
           inputs.release_soundflow_main == true ||
           inputs.release_ffmpeg == true ||
-          inputs.release_webrtc == true ||
-          inputs.release_portmidi == true
+          inputs.release_webrtc == true
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           BRANCH_REF: ${{ github.ref_name }}
@@ -74,7 +70,6 @@ jobs:
           RELEASE_MINIAUDIO: ${{ inputs.release_soundflow_main }}
           RELEASE_FFMPEG: ${{ inputs.release_ffmpeg }}
           RELEASE_WEBRTC: ${{ inputs.release_webrtc }}
-          RELEASE_PORTMIDI: ${{ inputs.release_portmidi }}
         run: |
           set -e # Exit immediately if a command fails
           
@@ -82,7 +77,6 @@ jobs:
           if [[ "$RELEASE_MINIAUDIO" == "true" ]]; then WORKFLOWS_TO_RUN["miniaudio"]="build-miniaudio.yml"; fi
           if [[ "$RELEASE_WEBRTC" == "true" ]]; then WORKFLOWS_TO_RUN["webrtc"]="build-extensions-apm.yml"; fi
           if [[ "$RELEASE_FFMPEG" == "true" ]]; then WORKFLOWS_TO_RUN["ffmpeg"]="build-ffmpeg.yml"; fi
-          if [[ "$RELEASE_PORTMIDI" == "true" ]]; then WORKFLOWS_TO_RUN["portmidi"]="build-portmidi.yml"; fi
 
           if [ ${#WORKFLOWS_TO_RUN[@]} -eq 0 ]; then
             echo "No native builds required for selected packages. Skipping."
@@ -162,21 +156,11 @@ jobs:
           path: native-artifacts/soundflow-ffmpeg-runtimes
           run_id: ${{ steps.native_builds.outputs.ffmpeg_run_id }}
 
-      - name: Download PortMidi Artifact
-        if: inputs.release_portmidi == true
-        uses: dawidd6/action-download-artifact@v6
-        with:
-          workflow: build-portmidi.yml
-          name: portmidi-native-libraries
-          path: native-artifacts/portmidi-native-libraries
-          run_id: ${{ steps.native_builds.outputs.portmidi_run_id }}
-
       - name: Extract and Place Runtimes
         if: >
           inputs.release_soundflow_main == true ||
           inputs.release_ffmpeg == true ||
-          inputs.release_webrtc == true ||
-          inputs.release_portmidi == true
+          inputs.release_webrtc == true
         run: |
           set -e
           # Process only the artifacts that were downloaded
@@ -197,7 +181,6 @@ jobs:
           }
 
           unzip_and_place "miniaudio-native-libraries" "Src/Backends/MiniAudio/runtimes"
-          unzip_and_place "portmidi-native-libraries" "Midi/SoundFlow.Midi.PortMidi/runtimes"
           unzip_and_place "webrtc-audio-processing" "Extensions/SoundFlow.Extensions.WebRtc.Apm/runtimes"
           unzip_and_place "soundflow-ffmpeg-runtimes" "Codecs/SoundFlow.Codecs.FFMpeg/runtimes"
 
@@ -234,10 +217,6 @@ jobs:
           if [[ "${{ inputs.release_webrtc }}" == "true" ]]; then
             update_and_pack "Extensions/SoundFlow.Extensions.WebRtc.Apm/SoundFlow.Extensions.WebRtc.Apm.csproj"
           fi
-          if [[ "${{ inputs.release_portmidi }}" == "true" ]]; then
-            update_and_pack "Midi/SoundFlow.Midi.PortMidi/SoundFlow.Midi.PortMidi.csproj"
-          fi
-
       - name: Push Packages to NuGet.org
         if: inputs.publish_to_nuget == true
         run: |

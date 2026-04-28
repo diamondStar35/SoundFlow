@@ -144,7 +144,9 @@ internal sealed class FFmpegDecoder : ISoundDecoder
                 return _stream.CanSeek ? _stream.Length : -1;
 
             if (!_stream.CanSeek) return -1;
-            return _stream.Seek(offset, (SeekOrigin)whence);
+
+            var seekOrigin = (SeekOrigin)((int)whence & 0xFFFF);
+            return _stream.Seek(offset, seekOrigin);
         }
         catch
         {

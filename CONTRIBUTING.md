@@ -75,7 +75,7 @@ To develop SoundFlow, you need:
 1.  **The .NET 8.0 SDK** installed.
 2.  An IDE (Visual Studio 2022, JetBrains Rider, or VS Code).
 3.  **Native Dependencies:**
-    *   The project relies on `miniaudio` (and optionally `ffmpeg`/`portmidi/webrtc-apm`).
+    *   The project relies on `miniaudio` (and optionally `ffmpeg`/`webrtc-apm`).
     *   Ensure you have the C/C++ build tools installed if you plan on modifying the native interop layers, though usually, the pre-compiled runtimes in `Src/Backends/MiniAudio/runtimes` handle this for standard development.
 
 ### Project Structure

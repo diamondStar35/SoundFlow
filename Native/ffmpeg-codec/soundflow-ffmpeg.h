@@ -1,5 +1,5 @@
-#ifndef SOUNDFLOW-FFMPEG_H 
-#define SOUNDFLOW-FFMPEG_H 
+#ifndef SOUNDFLOW_FFMPEG_H
+#define SOUNDFLOW_FFMPEG_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -108,4 +108,4 @@ SF_FFMPEG_API const char* sf_result_to_string(SF_Result result);
 }
 #endif
 
-#endif  // SOUNDFLOW-FFMPEG_H
+#endif  // SOUNDFLOW_FFMPEG_H
