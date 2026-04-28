@@ -58,9 +58,17 @@ public sealed class FFmpegCodecFactory : ICodecFactory
     /// <inheritdoc />
     public ISoundDecoder? CreateDecoder(Stream stream, string formatId, AudioFormat format)
     {
-        return SupportedFormatIds.Contains(formatId.ToLowerInvariant()) 
-            ? new FFmpegDecoder(stream, format) 
-            : null;
+        if (!SupportedFormatIds.Contains(formatId.ToLowerInvariant()))
+            return null;
+
+        var decoder = new FFmpegDecoder(stream, format);
+        if (format.Channels > 0 && format.SampleRate > 0
+            && (decoder.Channels != format.Channels || decoder.SampleRate != format.SampleRate))
+        {
+            return new FormatConvertingDecoder(decoder, format.Channels, format.SampleRate);
+        }
+
+        return decoder;
     }
 
     /// <inheritdoc />
@@ -73,14 +81,22 @@ public sealed class FFmpegCodecFactory : ICodecFactory
             // use hint or a dummy format to initialize the decoder, but the actual format is determined by the underlying FFmpeg wrapper.
             var decoder = new FFmpegDecoder(stream, hintFormat ?? AudioFormat.DvdHq);
 
-            // If initialization succeeds, the decoder has determined the actual format.
+            // If initialization succeeds, the decoder has determined the actual source format.
             detectedFormat = new AudioFormat
             {
-                Format = decoder.SampleFormat,
-                Channels = decoder.Channels,
-                SampleRate = decoder.SampleRate,
-                Layout = AudioFormat.GetLayoutFromChannels(decoder.Channels)
+                Format = decoder.SourceSampleFormat,
+                Channels = decoder.SourceChannels,
+                SampleRate = decoder.SourceSampleRate,
+                Layout = AudioFormat.GetLayoutFromChannels(decoder.SourceChannels)
             };
+            if (hintFormat.HasValue
+                && hintFormat.Value.Channels > 0
+                && hintFormat.Value.SampleRate > 0
+                && (decoder.Channels != hintFormat.Value.Channels || decoder.SampleRate != hintFormat.Value.SampleRate))
+            {
+                return new FormatConvertingDecoder(decoder, hintFormat.Value.Channels, hintFormat.Value.SampleRate);
+            }
+
             return decoder;
         }
         catch (Exception)

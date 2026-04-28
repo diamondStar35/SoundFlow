@@ -46,9 +46,12 @@ internal sealed class FFmpegDecoder : ISoundDecoder
             throw new FFmpegException(result, logMessage);
         }
 
-        SampleFormat = targetFormat.Format = nativeFormat;
-        Channels = targetFormat.Channels = (int)channels;
-        SampleRate = targetFormat.SampleRate = (int)sampleRate;
+        SourceSampleFormat = nativeFormat;
+        SourceChannels = (int)channels;
+        SourceSampleRate = (int)sampleRate;
+        SampleFormat = targetFormat.Format;
+        Channels = SourceChannels;
+        SampleRate = SourceSampleRate;
         
         var lengthInFrames = FFmpeg.GetLengthInPcmFrames(_handle);
         if (lengthInFrames < 0)
@@ -69,12 +72,15 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     
     /// <inheritdoc />
     public SampleFormat SampleFormat { get; }
+    public SampleFormat SourceSampleFormat { get; }
     
     /// <inheritdoc />
     public int Channels { get; }
+    public int SourceChannels { get; }
     
     /// <inheritdoc />
     public int SampleRate { get; }
+    public int SourceSampleRate { get; }
     
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
@@ -134,6 +140,9 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     {
         try
         {
+            if (whence == SeekWhence.Size)
+                return _stream.CanSeek ? _stream.Length : -1;
+
             if (!_stream.CanSeek) return -1;
             return _stream.Seek(offset, (SeekOrigin)whence);
         }

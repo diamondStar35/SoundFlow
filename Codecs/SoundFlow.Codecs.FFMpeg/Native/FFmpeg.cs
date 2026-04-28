@@ -22,6 +22,11 @@ internal enum SeekWhence
     /// Specifies the end of a stream.
     /// </summary>
     End = 2,
+    /// <summary>
+    /// Requests the total size of the stream in bytes.
+    /// Mirrors FFmpeg's AVSEEK_SIZE.
+    /// </summary>
+    Size = 0x10000,
 }
 
 /// <summary>
@@ -58,20 +63,25 @@ internal static partial class FFmpeg
         {
             // 1. Get the platform-specific library file name (e.g., "libsoundflow-ffmpeg.so", "soundflow-ffmpeg.dll").
             var platformSpecificName = GetPlatformSpecificLibraryName(libraryName);
+            nint library;
 
-            // 2. Try to load the library using its platform-specific name, allowing OS to find it in standard paths.
-            if (NativeLibrary.TryLoad(platformSpecificName, assembly, searchPath, out var library))
+            // 2. Try the app-managed lib folder first.
+            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            var libPath = Path.Combine(baseDirectory, "lib", platformSpecificName);
+            if (File.Exists(libPath) && NativeLibrary.TryLoad(libPath, out library))
                 return library;
 
-            // 3. If that fails, try to load it from the application's 'runtimes' directory for self-contained apps.
-            var relativePath = GetLibraryPath(libraryName); // This still gives the full relative path
-            var fullPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, relativePath);
-
-            if (File.Exists(fullPath) && NativeLibrary.TryLoad(fullPath, out library))
+            // 3. Fall back to a normal library name lookup for development scenarios.
+            if (NativeLibrary.TryLoad(platformSpecificName, assembly, searchPath, out library))
                 return library;
-            
-            // 4. If not found, use Load() to let the runtime throw a detailed DllNotFoundException.
-            return NativeLibrary.Load(fullPath); 
+
+            // 4. Fall back to the NuGet-style runtimes layout.
+            var runtimePath = Path.Combine(baseDirectory, GetLibraryPath(libraryName));
+            if (File.Exists(runtimePath) && NativeLibrary.TryLoad(runtimePath, out library))
+                return library;
+
+            // 5. If not found, let the runtime throw a detailed DllNotFoundException.
+            return NativeLibrary.Load(libPath);
         }
 
         /// <summary>

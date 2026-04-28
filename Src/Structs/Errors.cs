@@ -174,7 +174,7 @@ public sealed record HostError(string Reason, Exception? InnerException = null)
 /// <summary>
 /// Represents an unexpected error within a wrapped native library.
 /// </summary>
-/// <param name="LibraryName">The name of the native library where the error originated (e.g., "PortMidi", "miniaudio").</param>
+/// <param name="LibraryName">The name of the native library where the error originated (for example, "miniaudio").</param>
 /// <param name="Reason">The description of the internal error.</param>
 /// <param name="InnerException">The exception that is the cause of the current error, or a null reference if no inner exception is specified.</param>
 public sealed record InternalLibraryError(string LibraryName, string Reason, Exception? InnerException = null)

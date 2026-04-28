@@ -93,7 +93,7 @@ static int64_t seek_callback_wrapper(void* opaque, int64_t offset, int whence) {
     SF_Decoder* decoder = (SF_Decoder*)opaque;
     // AVSEEK_SIZE is a special request to get the file size.
     if (whence == AVSEEK_SIZE) {
-        return -1;
+        return decoder->onSeek(decoder->pUserData, 0, whence);
     }
     return decoder->onSeek(decoder->pUserData, offset, whence);
 }

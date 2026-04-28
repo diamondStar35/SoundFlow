@@ -61,7 +61,6 @@ SoundFlow provides a comprehensive suite of tools organized into a powerful, ext
 *   **MPE Support:** Full support for MIDI Polyphonic Expression for per-note control of pitch, timbre, and pressure.
 
 ### MIDI Ecosystem
-*   **Cross-Platform I/O:** Send and receive MIDI messages from hardware devices via the PortMidi backend.
 *   **Routing & Effects:** Graph-based MIDI routing with a suite of modifiers including Arpeggiators, Harmonizers, Randomizers, and Velocity curves.
 *   **Parameter Mapping:** Real-time MIDI mapping system allows controlling any engine parameter (Volume, Filter Cutoff, etc.) via external hardware controllers.
 
@@ -102,17 +101,6 @@ This package integrates the massive **FFmpeg** library into SoundFlow. While the
 To install this extension:
 ```bash
 dotnet add package SoundFlow.Codecs.FFMpeg
-```
-
-### SoundFlow.Midi.PortMidi
-This package provides the backend implementation for MIDI hardware I/O using **PortMidi**.
-
-*   **Hardware Access:** Enumerates and connects to physical MIDI keyboards, synthesizers, and controllers on Windows, macOS, and Linux.
-*   **Synchronization:** Provides high-precision clock synchronization, allowing SoundFlow to act as a MIDI Clock Master or Slave.
-
-To install this extension:
-```bash
-dotnet add package SoundFlow.Midi.PortMidi
 ```
 
 ### SoundFlow.Extensions.WebRtc.Apm
@@ -164,7 +152,6 @@ We sincerely appreciate the foundational work provided by the following projects
 *   **[miniaudio](https://github.com/mackron/miniaudio)** - Provides a lightweight and efficient audio I/O backend.
 *   **[FFmpeg](https://ffmpeg.org/)** - The leading multimedia framework, powering our codec extension.
 *   **[LAME Project](https://lame.sourceforge.io/)** - For the high-quality MP3 encoder used in the FFMpeg extension.
-*   **[PortMidi](https://github.com/PortMidi/portmidi)** - Enables cross-platform MIDI I/O.
 *   **[WebRTC Audio Processing Module (APM)](https://gitlab.freedesktop.org/pulseaudio/webrtc-audio-processing)** - Offers advanced audio processing (AEC, AGC, Noise Suppression).
 
 ## Support This Project

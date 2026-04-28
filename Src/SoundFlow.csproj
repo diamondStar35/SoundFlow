@@ -27,7 +27,6 @@
         <None Include="Backends\MiniAudio\runtimes\**\*.*">
             <Link>runtimes\%(RecursiveDir)%(Filename)%(Extension)</Link>
             <PackagePath>runtimes</PackagePath>
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <Pack>true</Pack>
         </None>
         <None Include="..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"

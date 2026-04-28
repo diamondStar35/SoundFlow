@@ -38,7 +38,8 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     private float _volume = 1f;
     
     // Cached calculations to avoid math in hot path
-    private Vector2 _volumePanFactors; 
+    private volatile float _volumePanLeft;
+    private volatile float _volumePanRight;
     private readonly object _stateLock = new();
 
     /// <inheritdoc />
@@ -206,15 +207,17 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
         var panValue = Math.Clamp(_pan, 0f, 1f);
         if (channels == 1)
         {
-             // For mono, combine pan to a single gain factor.
-            _volumePanFactors = new Vector2(_volume, 0);
+            _volumePanLeft = _volume;
+            _volumePanRight = 0f;
         }
         else
         {
-            _volumePanFactors = new Vector2(
-                _volume * MathF.Sqrt(1f - panValue),
-                _volume * MathF.Sqrt(panValue)
-            );
+            // Use a unity-center pan law so centered stereo and mixers do not lose level
+            // at every stage of the graph.
+            var left = panValue <= 0.5f ? 1f : MathF.Sqrt(Math.Max(0f, 2f * (1f - panValue)));
+            var right = panValue >= 0.5f ? 1f : MathF.Sqrt(Math.Max(0f, 2f * panValue));
+            _volumePanLeft = _volume * left;
+            _volumePanRight = _volume * right;
         }
     }
 
@@ -393,7 +396,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             var currentInputs = _inputsSnapshot;
             var currentModifiers = _modifiersSnapshot;
             var currentAnalyzers = _analyzersSnapshot;
-            var currentVolumePan = _volumePanFactors;
+            var currentVolumePan = new Vector2(_volumePanLeft, _volumePanRight);
 
             foreach (var input in currentInputs)
                 input.Process(workingBuffer, channels);

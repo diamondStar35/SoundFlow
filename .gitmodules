@@ -5,6 +5,3 @@
 	path = Native/miniaudio-backend/miniaudio
 	url = https://github.com/mackron/miniaudio.git
 	branch = dev
-[submodule "Native/portmidi"]
-	path = Native/portmidi
-	url = https://github.com/PortMidi/portmidi.git

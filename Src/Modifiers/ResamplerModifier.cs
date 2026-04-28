@@ -128,6 +128,17 @@ public class ResamplerModifier : SoundModifier
     }
 
     /// <summary>
+    /// Clears the modifier's buffered resampling state.
+    /// Call this when the upstream playback position is discontinuously changed
+    /// such as stop, seek, or loop restart.
+    /// </summary>
+    public void Reset()
+    {
+        _inputBuffer.Clear();
+        _readPosition = 0d;
+    }
+
+    /// <summary>
     /// This method is not supported for the Resampler modifier.
     /// Processing must be done on a block of samples to perform interpolation.
     /// </summary>
