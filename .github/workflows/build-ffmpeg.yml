@@ -76,6 +76,13 @@ jobs:
             echo "===== $log ====="
             cat "$log"
           done
+
+          echo "--- FFmpeg config.log ---"
+          FF_CONFIG_LOG="build/ffmpeg/src/ffmpeg_dependency/ffbuild/config.log"
+          if [ -f "$FF_CONFIG_LOG" ]; then
+            echo "===== $FF_CONFIG_LOG ====="
+            cat "$FF_CONFIG_LOG"
+          fi
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |

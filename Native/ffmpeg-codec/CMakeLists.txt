@@ -393,6 +393,7 @@ if(TARGET_OS STREQUAL "win")
             --target-os=mingw32
             --arch=${FFMPEG_ARCH}
             --cc=${CMAKE_C_COMPILER}
+            --host-cc=${CMAKE_C_COMPILER}
             "--extra-cflags=${WIN_EXTRA_CFLAGS}"
             "--extra-ldflags=${WIN_EXTRA_LDFLAGS}")
 
