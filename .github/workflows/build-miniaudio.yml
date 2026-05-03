@@ -105,14 +105,6 @@ jobs:
             cmake_target_arch: x86_64
             lib_extension: ".so"
 
-          # Emscripten build
-          - os: ubuntu-22.04
-            rid: browser-wasm
-            platform: Emscripten
-            arch: wasm32
-            cmake_target_arch: wasm32
-            lib_extension: ".js"
-
     name: Build for ${{ matrix.platform }} - ${{ matrix.arch }}
 
     steps:
@@ -151,13 +143,6 @@ jobs:
         if: matrix.platform == 'Android'
         uses: android-actions/setup-android@v2
 
-      - name: Install Dependencies (Emscripten)
-        if: matrix.platform == 'Emscripten'
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake make python3 emscripten
-
       - name: Install Cross-Compilation tools (Linux)
         if: matrix.platform == 'Linux' && (matrix.arch == 'armv7l' || matrix.arch == 'aarch64')
         run: |
@@ -182,10 +167,7 @@ jobs:
         working-directory: ${{ github.workspace }}/Native/miniaudio-backend
         run: |
           CMAKE_FLAGS=""
-          if [ "${{ matrix.platform }}" == "Emscripten" ]; then
-            emcmake cmake -B build -DCMAKE_BUILD_TYPE=Release
-            exit 0
-          elif [ "${{ matrix.platform }}" == "Android" ]; then
+          if [ "${{ matrix.platform }}" == "Android" ]; then
             CMAKE_FLAGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake -DANDROID_ABI=${{ matrix.arch }} -DANDROID_PLATFORM=android-21 -DCMAKE_ANDROID_ARCH_ABI=${{ matrix.cmake_target_arch }}"
           elif [ "${{ matrix.platform }}" == "iOS" ]; then
             CMAKE_FLAGS="-G Xcode \
@@ -231,18 +213,11 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       - name: Build (Unix)
-        if: matrix.platform != 'Windows' && matrix.platform != 'iOS' && matrix.platform != 'Emscripten'
+        if: matrix.platform != 'Windows' && matrix.platform != 'iOS'
         shell: bash
         working-directory: ${{ github.workspace }}/Native/miniaudio-backend/build
         run: |
           cmake --build . --config Release
-
-      - name: Build (Emscripten)
-        if: matrix.platform == 'Emscripten'
-        shell: bash
-        working-directory: ${{ github.workspace }}/Native/miniaudio-backend/build
-        run: |
-          cmake --build . --parallel
 
       # Artifact collection
       - name: Create Output Directory
@@ -258,9 +233,6 @@ jobs:
             cp "${{ github.workspace }}/Native/miniaudio-backend/build/miniaudio.dll" "runtimes/${{ matrix.rid }}/native/"
           elif [ "${{ matrix.platform }}" == "iOS" ]; then
             cp -r "${{ github.workspace }}/Native/miniaudio-backend/build/Release-iphoneos/miniaudio.framework" "runtimes/${{ matrix.rid }}/native/"
-          elif [ "${{ matrix.platform }}" == "Emscripten" ]; then
-            cp "${{ github.workspace }}/Native/miniaudio-backend/build/libminiaudio.js" "runtimes/${{ matrix.rid }}/native/"
-            cp "${{ github.workspace }}/Native/miniaudio-backend/build/libminiaudio.wasm" "runtimes/${{ matrix.rid }}/native/"
           else
             cp "${{ github.workspace }}/Native/miniaudio-backend/build/libminiaudio${{ matrix.lib_extension }}" "runtimes/${{ matrix.rid }}/native/"
           fi
@@ -303,22 +275,6 @@ jobs:
           readelf -d "$LIB_PATH"
           echo "--- Symbols ---"
           nm -g "$LIB_PATH" | grep " T "
-
-      - name: Analyze Dependencies and Exports (Emscripten)
-        if: matrix.platform == 'Emscripten'
-        shell: bash
-        run: |
-          JS_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.js"
-          WASM_PATH="runtimes/${{ matrix.rid }}/native/libminiaudio.wasm"
-          echo "--- Emscripten Artifacts ---"
-          ls -lh "$JS_PATH" "$WASM_PATH"
-          file "$WASM_PATH"
-          echo "--- Exported symbols from wasm ---"
-          if command -v wasm-objdump >/dev/null 2>&1; then
-            wasm-objdump -x "$WASM_PATH" | head -n 120 || true
-          else
-            echo "wasm-objdump is not available on this runner."
-          fi
 
       - name: Analyze Dependencies and Exports (Linux)
         if: matrix.platform == 'Linux'
