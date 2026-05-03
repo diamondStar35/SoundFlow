@@ -353,8 +353,15 @@ set(FFMPEG_COMMON_FLAGS
         --enable-encoder=pcm_u32le
 )
 
-# Re-enable ffmpeg / ffprobe ONLY when we build natively
-if(NOT CMAKE_CROSSCOMPILING)
+# Re-enable ffmpeg / ffprobe ONLY when we build natively.
+# CLANGARM64 on Windows runs Unix tools in x64 emulation and behaves like
+# cross-compilation for FFmpeg configure even on native arm64 runners.
+set(FFMPEG_ENABLE_TOOLS ON)
+if(TARGET_OS STREQUAL "win" AND TARGET_ARCH STREQUAL "arm64")
+    set(FFMPEG_ENABLE_TOOLS OFF)
+endif()
+
+if(NOT CMAKE_CROSSCOMPILING AND FFMPEG_ENABLE_TOOLS)
     list(APPEND FFMPEG_COMMON_FLAGS
             --enable-ffmpeg
             --enable-ffprobe)
@@ -370,14 +377,24 @@ if(TARGET_OS STREQUAL "win")
         set(FFMPEG_ARCH "aarch64")
     endif()
 
+    set(WIN_EXTRA_CFLAGS "-O2 -static -static-libgcc -static-libstdc++")
+    set(WIN_EXTRA_LDFLAGS "-static")
+
+    if(TARGET_ARCH STREQUAL "arm64")
+        # clangarm64 does not provide the same runtime/linker semantics as GCC-based MinGW.
+        set(WIN_EXTRA_CFLAGS "-O2 -static")
+        list(APPEND FFMPEG_COMMON_FLAGS --enable-cross-compile)
+    endif()
+
     # LAME MinGW setup
     list(APPEND LAME_COMMON_FLAGS --host=${FFMPEG_ARCH}-w64-mingw32)
 
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=mingw32
             --arch=${FFMPEG_ARCH}
-            "--extra-cflags=-O2 -static -static-libgcc -static-libstdc++"
-            "--extra-ldflags=-static")
+            --cc=${CMAKE_C_COMPILER}
+            "--extra-cflags=${WIN_EXTRA_CFLAGS}"
+            "--extra-ldflags=${WIN_EXTRA_LDFLAGS}")
 
     if(CMAKE_CROSSCOMPILING)
         list(APPEND FFMPEG_COMMON_FLAGS --cross-prefix=${FFMPEG_ARCH}-w64-mingw32-)

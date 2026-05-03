@@ -59,6 +59,23 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }}
           cmake --build . --parallel --verbose
+      - name: Dump dependency configure logs on failure
+        if: failure()
+        shell: msys2 {0}
+        run: |
+          echo "--- LAME configure logs ---"
+          for log in build/lame/src/lame_dependency-stamp/*configure*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log ====="
+            cat "$log"
+          done
+
+          echo "--- FFmpeg configure logs ---"
+          for log in build/ffmpeg/src/ffmpeg_dependency-stamp/*configure*.log; do
+            [ -f "$log" ] || continue
+            echo "===== $log ====="
+            cat "$log"
+          done
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |
@@ -81,11 +98,12 @@ jobs:
         shell: msys2 {0}
         run: |
           ARTIFACT_DIR="build/runtimes/win-${{ matrix.arch }}/native"
+          FORBIDDEN_MSVCRT_REGEX='(vcruntime[0-9_]*\.dll|msvcp[0-9_]*\.dll|msvcr[0-9]+d?\.dll)'
           for lib in "$ARTIFACT_DIR"/*.dll; do
             [ -f "$lib" ] || continue
-            if objdump -p "$lib" | grep -Ei "vcruntime|msvcp|msvcr" >/dev/null; then
+            if objdump -p "$lib" | grep -Eiq "$FORBIDDEN_MSVCRT_REGEX"; then
               echo "Found forbidden MSVC runtime dependency in $(basename "$lib")"
-              objdump -p "$lib" | grep -Ei "DLL Name:|vcruntime|msvcp|msvcr" || true
+              objdump -p "$lib" | grep -Ei "DLL Name:|vcruntime|msvcp|msvcr[0-9]+d?" || true
               exit 1
             fi
           done

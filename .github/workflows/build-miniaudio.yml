@@ -277,8 +277,10 @@ jobs:
           nm -g "$LIB_PATH" | grep " T " || true
 
           echo "--- Validating no MSVC redistributable dependency ---"
-          if objdump -p "$LIB_PATH" | grep -Ei "vcruntime|msvcp|msvcr" >/dev/null; then
+          FORBIDDEN_MSVCRT_REGEX='(vcruntime[0-9_]*\.dll|msvcp[0-9_]*\.dll|msvcr[0-9]+d?\.dll)'
+          if objdump -p "$LIB_PATH" | grep -Eiq "$FORBIDDEN_MSVCRT_REGEX"; then
             echo "Found forbidden MSVC runtime dependency in $LIB_PATH"
+            objdump -p "$LIB_PATH" | grep -Ei "DLL Name:|vcruntime|msvcp|msvcr[0-9]+d?" || true
             exit 1
           fi
 
