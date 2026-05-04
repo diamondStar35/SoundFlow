@@ -43,10 +43,11 @@ jobs:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            ${{ matrix.mingw-package-prefix }}-toolchain
+            ${{ matrix.mingw-package-prefix }}-gcc
             ${{ matrix.mingw-package-prefix }}-cmake
             ${{ matrix.mingw-package-prefix }}-ninja
-            ${{ matrix.mingw-package-prefix }}-pkgconf
+            ${{ matrix.mingw-package-prefix }}-make
+            ${{ matrix.mingw-package-prefix }}-pkg-config
             base-devel
             git
             nasm
@@ -55,34 +56,10 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja \
+          cmake .. -G "MinGW Makefiles" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }}
           cmake --build . --parallel --verbose
-      - name: Dump dependency configure logs on failure
-        if: failure()
-        shell: msys2 {0}
-        run: |
-          echo "--- LAME configure logs ---"
-          for log in build/lame/src/lame_dependency-stamp/*configure*.log; do
-            [ -f "$log" ] || continue
-            echo "===== $log ====="
-            cat "$log"
-          done
-
-          echo "--- FFmpeg configure logs ---"
-          for log in build/ffmpeg/src/ffmpeg_dependency-stamp/*configure*.log; do
-            [ -f "$log" ] || continue
-            echo "===== $log ====="
-            cat "$log"
-          done
-
-          echo "--- FFmpeg config.log ---"
-          FF_CONFIG_LOG="build/ffmpeg/src/ffmpeg_dependency/ffbuild/config.log"
-          if [ -f "$FF_CONFIG_LOG" ]; then
-            echo "===== $FF_CONFIG_LOG ====="
-            cat "$FF_CONFIG_LOG"
-          fi
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |
