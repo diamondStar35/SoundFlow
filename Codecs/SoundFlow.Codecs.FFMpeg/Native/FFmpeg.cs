@@ -61,27 +61,63 @@ internal static partial class FFmpeg
     {
         public static nint Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
         {
-            // 1. Get the platform-specific library file name (e.g., "libsoundflow-ffmpeg.so", "soundflow-ffmpeg.dll").
+            // 1. iOS frameworks are embedded in the app bundle's Frameworks folder.
+            if (OperatingSystem.IsIOS())
+            {
+                var iosHandle = TryLoadIosFramework(libraryName, assembly, searchPath);
+                if (iosHandle != nint.Zero)
+                    return iosHandle;
+            }
+
+            // 2. Get the platform-specific library file name (e.g., "libsoundflow-ffmpeg.so", "soundflow-ffmpeg.dll").
             var platformSpecificName = GetPlatformSpecificLibraryName(libraryName);
             nint library;
 
-            // 2. Try the app-managed lib folder first.
+            // 3. Try the app-managed lib folder first.
             var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
             var libPath = Path.Combine(baseDirectory, "lib", platformSpecificName);
             if (File.Exists(libPath) && NativeLibrary.TryLoad(libPath, out library))
                 return library;
 
-            // 3. Fall back to a normal library name lookup for development scenarios.
+            // 4. Fall back to a normal library name lookup for development scenarios.
             if (NativeLibrary.TryLoad(platformSpecificName, assembly, searchPath, out library))
                 return library;
 
-            // 4. Fall back to the NuGet-style runtimes layout.
+            // 5. Fall back to the NuGet-style runtimes layout.
             var runtimePath = Path.Combine(baseDirectory, GetLibraryPath(libraryName));
             if (File.Exists(runtimePath) && NativeLibrary.TryLoad(runtimePath, out library))
                 return library;
 
-            // 5. If not found, let the runtime throw a detailed DllNotFoundException.
+            // 6. If not found, let the runtime throw a detailed DllNotFoundException.
             return NativeLibrary.Load(libPath);
+        }
+
+        private static nint TryLoadIosFramework(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+        {
+            var baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            var candidates = new[]
+            {
+                Path.Combine(baseDirectory, "Frameworks", $"{libraryName}.framework", libraryName),
+                Path.Combine(baseDirectory, $"{libraryName}.framework", libraryName),
+                $"@rpath/{libraryName}.framework/{libraryName}",
+                $"{libraryName}.framework/{libraryName}",
+                libraryName
+            };
+
+            for (var i = 0; i < candidates.Length; i++)
+            {
+                var candidate = candidates[i];
+                if (Path.IsPathRooted(candidate) && !File.Exists(candidate))
+                    continue;
+
+                if (NativeLibrary.TryLoad(candidate, out var handle))
+                    return handle;
+
+                if (NativeLibrary.TryLoad(candidate, assembly, searchPath, out handle))
+                    return handle;
+            }
+
+            return nint.Zero;
         }
 
         /// <summary>
