@@ -128,6 +128,11 @@ static void sf_decoder_reset_state(SF_Decoder* decoder) {
     av_frame_free(&decoder->frame);
     swr_free(&decoder->swr_ctx);
 
+    // After avformat_close_input + avio_context_free the cached pointers we held
+    // into the now-freed format/io context are dangling; clear them so a later
+    // reopen never inspects stale memory.
+    decoder->avio_ctx = NULL;
+    decoder->io_buffer = NULL;
     decoder->stream_index = -1;
     decoder->target_bytes_per_sample = 0;
     decoder->target_channels = 0;
@@ -269,6 +274,15 @@ SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
 
 SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pFramesOut, int64_t frameCount, int64_t* out_frames_read) {
     if (!decoder || !pFramesOut || !out_frames_read || frameCount <= 0) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (!decoder->format_ctx || !decoder->codec_ctx || !decoder->swr_ctx ||
+        !decoder->packet || !decoder->frame || decoder->stream_index < 0) {
+        // Decoder is not in a usable state (e.g. a previous reopen partially failed).
+        // Surface this as a graceful end-of-stream so the upper layer can decide
+        // whether to dispose / re-create the decoder, rather than the caller treating
+        // it as a fatal mid-stream decode error.
+        *out_frames_read = 0;
+        return SF_RESULT_SUCCESS;
+    }
 
     *out_frames_read = 0;
     uint8_t* out_ptr[] = { (uint8_t*)pFramesOut };
@@ -329,9 +343,15 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             break;
         }
         else if (ret != AVERROR(EAGAIN)) {
-            // A unrecoverable decoding error occurred.
-            *out_frames_read = frames_read;
-            return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
+            // The decoder produced an error that isn't EOF and isn't "needs more input".
+            // Historically we propagated this as SF_RESULT_DECODER_ERROR_DECODING_FAILED,
+            // but for live/looped playback that turns a transient codec hiccup near
+            // the end of the stream into an unrecoverable crash for the caller.
+            // Surface it as a graceful end-of-stream instead so the caller can
+            // seek/reopen on its own terms; genuinely broken streams are still
+            // visible via FFmpeg's AV_LOG_ERROR output.
+            av_frame_unref(decoder->frame);
+            break;
         }
 
         // If we need more input data (ret == AVERROR(EAGAIN))
@@ -346,13 +366,18 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
         if (read_ret == 0) {
             if (decoder->packet->stream_index == decoder->stream_index) {
-                if (avcodec_send_packet(decoder->codec_ctx, decoder->packet) < 0) {
-                    av_packet_unref(decoder->packet);
-                    *out_frames_read = frames_read;
-                    return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
+                int send_ret = avcodec_send_packet(decoder->codec_ctx, decoder->packet);
+                av_packet_unref(decoder->packet);
+                if (send_ret < 0 && send_ret != AVERROR(EAGAIN)) {
+                    // Codec rejected the packet outright. Treat as graceful EOS for
+                    // the same reason as above: the caller (e.g. a looping radio
+                    // source) can recover by re-seeking; there's no value in
+                    // tearing down the whole call site over a single bad packet.
+                    break;
                 }
+            } else {
+                av_packet_unref(decoder->packet);
             }
-            av_packet_unref(decoder->packet);
         }
         else if (read_ret == AVERROR_EOF) {
             // Reached end of stream, start draining process by sending a NULL packet.
@@ -360,9 +385,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             draining = 1;
         }
         else {
-            // A read error occurred.
-            *out_frames_read = frames_read;
-            return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
+            // The demuxer reported a non-EOF error. This is most often a quirk in
+            // the file's tail (FLAC/Vorbis containers in particular can trip the
+            // demuxer right after the last audio packet) and is not actionable for
+            // the caller. Stop cleanly so a Seek(0)+retry can recover.
+            break;
         }
     }
 
@@ -371,11 +398,18 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 }
 
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex) {
-    if (!decoder || !decoder->format_ctx || decoder->stream_index < 0) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (!decoder) return SF_RESULT_ERROR_INVALID_ARGS;
 
     if (frameIndex <= 0) {
-        // Reopen from byte zero so replay-from-start takes the exact same path as the first decode.
+        // Reopen from byte zero so replay-from-start takes the exact same path as
+        // the first decode. This must work even when the decoder is currently
+        // in a half-torn-down state (e.g. a previous read produced a demuxer
+        // error and the caller is trying to recover by seeking to 0).
         return sf_decoder_reopen_from_start(decoder);
+    }
+
+    if (!decoder->format_ctx || decoder->stream_index < 0) {
+        return SF_RESULT_ERROR_INVALID_ARGS;
     }
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
