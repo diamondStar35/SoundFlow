@@ -24,6 +24,10 @@
         <Company>LSXPrime</Company>
     </PropertyGroup>
 
+    <PropertyGroup Condition="'$(IOSHostBuild)' == 'true'">
+        <DefineConstants>$(DefineConstants);SOUNDFLOW_IOS_FRAMEWORK_IMPORTS</DefineConstants>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\..\Src\SoundFlow.csproj" />
     </ItemGroup>

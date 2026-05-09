@@ -34,7 +34,11 @@ internal enum SeekWhence
 /// </summary>
 internal static partial class FFmpeg
 {
+#if SOUNDFLOW_IOS_FRAMEWORK_IMPORTS
+    private const string LibraryName = "@rpath/soundflow-ffmpeg.framework/soundflow-ffmpeg";
+#else
     private const string LibraryName = "soundflow-ffmpeg";
+#endif
 
     #region Delegates
     

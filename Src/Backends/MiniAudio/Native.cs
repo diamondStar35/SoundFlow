@@ -7,8 +7,12 @@ namespace SoundFlow.Backends.MiniAudio;
 
 internal static unsafe partial class Native
 {
+#if SOUNDFLOW_IOS_FRAMEWORK_IMPORTS
+    private const string LibraryName = "@rpath/miniaudio.framework/miniaudio";
+#else
     private const string LibraryName = "miniaudio";
-    
+#endif
+
     #region Delegates
     
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
