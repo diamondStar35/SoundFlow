@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using SoundFlow.Abstracts.Devices;
 using SoundFlow.Backends.MiniAudio.Enums;
@@ -176,9 +177,25 @@ internal sealed class MiniAudioDevice : IDisposable
     private static uint ToUInt(bool value) => (uint)(value ? 1 : 0);
 
 
-    public void Start() => Native.DeviceStart(_device);
+    public void Start()
+    {
+        var result = Native.DeviceStart(_device);
+        if (result != MiniAudioResult.Success)
+            throw new InvalidOperationException($"Unable to start MiniAudio {Capability} device {Info?.Name ?? "Default Device"}. Result: {result}");
+    }
 
-    public void Stop() => Native.DeviceStop(_device);
+    public void Stop()
+    {
+        var result = Native.DeviceStop(_device);
+        if (result == MiniAudioResult.Success
+            || result == MiniAudioResult.DeviceNotStarted
+            || result == MiniAudioResult.DeviceNotInitialized)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException($"Unable to stop MiniAudio {Capability} device {Info?.Name ?? "Default Device"}. Result: {result}");
+    }
 
     public void Process(nint pOutput, nint pInput, uint frameCount)
     {
