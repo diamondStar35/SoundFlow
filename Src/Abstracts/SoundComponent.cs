@@ -40,6 +40,12 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     // Cached calculations to avoid math in hot path
     private volatile float _volumePanLeft;
     private volatile float _volumePanRight;
+    // The volume/pan gains applied at the end of the previous processed block. The current block ramps from
+    // these to the target gains per-sample, so a volume change (e.g. a fade) never steps at the block boundary
+    // — which on a steady tone is an audible click. Unchanged volume takes the fast constant path.
+    private float _appliedVolumePanLeft;
+    private float _appliedVolumePanRight;
+    private bool _hasAppliedVolumePan;
     private readonly object _stateLock = new();
 
     /// <inheritdoc />
@@ -396,7 +402,10 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             var currentInputs = _inputsSnapshot;
             var currentModifiers = _modifiersSnapshot;
             var currentAnalyzers = _analyzersSnapshot;
-            var currentVolumePan = new Vector2(_volumePanLeft, _volumePanRight);
+            var targetVolumePan = new Vector2(_volumePanLeft, _volumePanRight);
+            var startVolumePan = _hasAppliedVolumePan
+                ? new Vector2(_appliedVolumePanLeft, _appliedVolumePanRight)
+                : targetVolumePan;
 
             foreach (var input in currentInputs)
                 input.Process(workingBuffer, channels);
@@ -407,7 +416,10 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
                 if (modifier.Enabled)
                     modifier.Process(workingBuffer, channels);
 
-            ApplyVolumeAndPanning(workingBuffer, currentVolumePan, channels);
+            ApplyVolumeAndPanning(workingBuffer, startVolumePan, targetVolumePan, channels);
+            _appliedVolumePanLeft = targetVolumePan.X;
+            _appliedVolumePanRight = targetVolumePan.Y;
+            _hasAppliedVolumePan = true;
 
             MixBuffers(workingBuffer, outputBuffer);
 
@@ -448,6 +460,67 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
         {
             destination[count] += source[count];
             count++;
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ApplyVolumeAndPanning(Span<float> buffer, Vector2 startVolumePan, Vector2 endVolumePan, int channels)
+    {
+        // Gain unchanged across the block: use the fast constant (SIMD) path.
+        if (MathF.Abs(startVolumePan.X - endVolumePan.X) < 1e-6f &&
+            MathF.Abs(startVolumePan.Y - endVolumePan.Y) < 1e-6f)
+        {
+            ApplyVolumeAndPanning(buffer, endVolumePan, channels);
+            return;
+        }
+
+        // Gain changed: ramp per-sample from the previous block's gain to the new target, so there is no step
+        // discontinuity at the block boundary (which would click on a steady tone such as the ship engine).
+        var frames = channels > 0 ? buffer.Length / channels : 0;
+        if (frames <= 0)
+        {
+            ApplyVolumeAndPanning(buffer, endVolumePan, channels);
+            return;
+        }
+
+        var invFrames = 1f / frames;
+        switch (channels)
+        {
+            case 1:
+            {
+                var gStart = MathF.Sqrt((startVolumePan.X * startVolumePan.X) + (startVolumePan.Y * startVolumePan.Y));
+                var gEnd = MathF.Sqrt((endVolumePan.X * endVolumePan.X) + (endVolumePan.Y * endVolumePan.Y));
+                for (var f = 0; f < frames; f++)
+                    buffer[f] *= gStart + ((gEnd - gStart) * (f * invFrames));
+                break;
+            }
+            case 2:
+            {
+                for (var f = 0; f < frames; f++)
+                {
+                    var t = f * invFrames;
+                    var b = f * 2;
+                    buffer[b] *= startVolumePan.X + ((endVolumePan.X - startVolumePan.X) * t);
+                    buffer[b + 1] *= startVolumePan.Y + ((endVolumePan.Y - startVolumePan.Y) * t);
+                }
+                break;
+            }
+            default:
+            {
+                var avgStart = (startVolumePan.X + startVolumePan.Y) * 0.5f;
+                var avgEnd = (endVolumePan.X + endVolumePan.Y) * 0.5f;
+                for (var f = 0; f < frames; f++)
+                {
+                    var t = f * invFrames;
+                    var baseIndex = f * channels;
+                    buffer[baseIndex] *= startVolumePan.X + ((endVolumePan.X - startVolumePan.X) * t);
+                    buffer[baseIndex + 1] *= startVolumePan.Y + ((endVolumePan.Y - startVolumePan.Y) * t);
+                    var avg = avgStart + ((avgEnd - avgStart) * t);
+                    for (var c = 2; c < channels; c++)
+                        buffer[baseIndex + c] *= avg;
+                }
+                break;
+            }
         }
     }
 
