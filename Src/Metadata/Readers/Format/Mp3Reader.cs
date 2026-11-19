@@ -183,7 +183,9 @@ internal class Mp3Reader : BaseSoundFormatReader
                                new[,] { { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160 } };
         }
 
-        info.Bitrate = layerBitrateTable[0, bitrateIndex] * 1000;
+        // Layer III has one row per MPEG version; the other layer tables have one row.
+        var bitrateRow = layerId == 1 ? mpegVersionIndex : 0;
+        info.Bitrate = layerBitrateTable[bitrateRow, bitrateIndex] * 1000;
         info.SampleRate = SampleRateTable[mpegVersionIndex, sampleRateIndex];
         info.ChannelCount = channelMode == 3 ? 1 : 2;
         
