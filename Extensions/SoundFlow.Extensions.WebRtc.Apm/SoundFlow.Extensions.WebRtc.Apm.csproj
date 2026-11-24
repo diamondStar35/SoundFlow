@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -29,7 +29,6 @@
         <None Include="runtimes\**\*.*">
             <Link>runtimes\%(RecursiveDir)%(Filename)%(Extension)</Link>
             <PackagePath>runtimes</PackagePath>
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <Pack>true</Pack>
         </None>
         <None Include="..\..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"
@@ -44,4 +43,5 @@
         <None Include="..\..\LICENSE.md" Pack="true" PackagePath="" />
         <None Include="..\..\logo.png" Pack="true" PackagePath="" />
     </ItemGroup>
+  <Import Project="../../Packaging/NativeAssets.targets" />
 </Project>

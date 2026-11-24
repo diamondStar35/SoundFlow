@@ -1,0 +1,4 @@
+{
+  "retained": ["win-x64", "win-arm64", "linux-x64", "linux-arm64", "osx-x64", "osx-arm64", "ios-arm64", "android-arm64"],
+  "openal": {"version": "1.25.2", "repository": "https://github.com/kcat/openal-soft", "commit": "b2c48f7718ef3fcf67921a8b6534c4914e328970"}
+}

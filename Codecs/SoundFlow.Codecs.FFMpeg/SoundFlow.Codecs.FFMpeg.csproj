@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -9,7 +9,7 @@
         <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
         <Title>SoundFlow FFmpeg Codecs</Title>
         <PackageId>SoundFlow.Codecs.FFMpeg</PackageId>
-        <Version>1.4.0</Version>
+        <Version>1.4.2</Version>
         <Description>Provides FFmpeg-based audio codecs (MP3, AAC, OGG, Opus, etc.) for the SoundFlow audio engine.</Description>
         <PackageTags>soundflow;audio;codec;ffmpeg;mp3;aac;ogg;opus</PackageTags>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
@@ -44,16 +44,12 @@
               CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
-    <ItemGroup>
-        <None Include="$(PackageId).targets" Pack="true" PackagePath="" />
-        <None Include="runtimes\**\*" Pack="true" PackagePath="runtimes" />
-    </ItemGroup>
-
-    <ItemGroup>
-        <None Include="SoundFlow.Codecs.FFMpeg.targets" Pack="true" PackagePath="" />
+<ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="" />
         <None Include="..\..\LICENSE.md" Pack="true" PackagePath="" />
         <None Include="..\..\logo.png" Pack="true" PackagePath="" />
     </ItemGroup>
 
+  <Import Project="../../Packaging/NativeAssets.targets" />
+  <ItemGroup><None Include="SoundFlow.Codecs.FFMpeg.targets" Pack="true" PackagePath="buildTransitive" /></ItemGroup>
 </Project>
