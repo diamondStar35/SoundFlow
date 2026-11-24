@@ -28,6 +28,6 @@
         <None Include="SoundFlow.Backends.MiniAudio.targets" Pack="true" PackagePath="buildTransitive" />
     </ItemGroup>
     <ItemGroup>
-        <None Include="../../README.md" Pack="true" PackagePath="README.md" />
+        <None Include="../../Docs/Backends/MiniAudio.md" Pack="true" PackagePath="README.md" />
     </ItemGroup>
 </Project>

@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
     <img src="https://raw.githubusercontent.com/LSXPrime/SoundFlow/refs/heads/master/logo.png" alt="Project Logo" width="256" height="256">
 
 # SoundFlow - Audio Processing Module Extension (WebRTC)
@@ -26,7 +26,7 @@ This extension provides the following WebRTC APM features, configurable and appl
 *   **High Pass Filter (HPF):** Removes low-frequency components below ~80 Hz, helping to eliminate DC offset, rumble, and plosives.
 *   **Pre-Amplifier:** Applies a configurable gain to the audio signal before other APM processing steps.
 
-These features are primarily applied via a single, unified `WebRtcApmModifier` component designed for real-time audio graph processing. The package also includes a `NoiseSuppressor` component for convenient offline/batch processing of `ISoundDataProvider` sources.
+These features are primarily applied via a single, unified `WebRtcApmModifier` component designed for real-time audio graph processing. The package also includes a `NoiseSuppressor` component for convenient offline/batch processing of `SoundFlow.Providers.IDataProvider` sources.
 
 ## Getting Started
 
@@ -48,189 +48,28 @@ dotnet add package SoundFlow.Extensions.WebRtc.Apm
 
 ### Usage
 
-The primary way to use the WebRTC APM features in a real-time SoundFlow graph is by adding the `WebRtcApmModifier` to a `SoundComponent`, typically one that represents your audio input source (e.g., a component connected to a `MicrophoneDataProvider`).
+Reference an explicit backend such as SoundFlow.Backends.MiniAudio. The [noise-suppression sample](../../Samples/SoundFlow.Samples.NoiseSuppression/Program.cs) demonstrates file playback, live microphone processing and offline cleaning using the current device interface.
 
 ```csharp
-using SoundFlow.Abstracts;
-using SoundFlow.Backends.MiniAudio;
+using MiniAudio = SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
-using SoundFlow.Providers;
-using SoundFlow.Enums;
 using SoundFlow.Extensions.WebRtc.Apm.Modifiers;
+using SoundFlow.Providers;
+using SoundFlow.Structs;
 
-// Initialize the audio engine with mixed capability
-var audioEngine = new MiniAudioEngine(48000, Capability.Mixed, channels: 1);
-
-
-// --- Real-time Processing ---
-// For real-time audio processing and voice communication applications:, add the WebRtcApmModifier to a SoundComponent.
-
-// Create the microphone data provider and sound player
-var microphoneDataProvider = new MicrophoneDataProvider();
-var soundPlayer = new SoundPlayer(microphoneDataProvider);
-
-// Create and configure the WebRTC APM (Audio Processing Module) modifier
-var apmModifier = new WebRtcApmModifier(
-    // Echo Cancellation (AEC) settings
-    aecEnabled: true,          // Enable echo cancellation to remove feedback from speakers
-    aecMobileMode: false,      // Use desktop-optimized AEC (false) vs mobile-optimized (true)
-    aecLatencyMs: 40,         // Expected system latency in milliseconds for echo cancellation
-
-    // Noise Suppression settings
-    nsEnabled: true,           // Enable background noise reduction
-    nsLevel: NoiseSuppressionLevel.High,  // Aggressiveness of noise suppression
-
-    // Automatic Gain Control (AGC) settings - Version 1
-    agc1Enabled: true,         // Enable legacy AGC (Automatic Gain Control)
-    agcMode: GainControlMode.AdaptiveDigital,  // AGC operating mode
-    agcTargetLevel: -3,        // Target output level in dBFS (-31 to 0) for Adaptive mode
-    agcCompressionGain: 9,     // Fixed gain in dB (0-90) for FixedDigital mode
-    agcLimiter: true,          // Enable output limiter to prevent clipping
-
-    // AGC Version 2 settings (newer algorithm)
-    agc2Enabled: false,        // Disable newer AGC implementation
-
-    // Filter settings
-    hpfEnabled: true,          // Enable high-pass filter to remove low-frequency noise
-    preAmpEnabled: false,      // Disable pre-amplifier stage
-    preAmpGain: 1.0f,          // Default gain (1.0 = no amplification)
-
-    // Multi-channel audio processing settings
-    useMultichannelCapture: false,  // Process capture audio as mono/stereo (false)
-    useMultichannelRender: false,   // Process render audio as mono/stereo (false)
-    downmixMethod: DownmixMethod.AverageChannels  // How to mix channels when downmixing
-);
-
-// Add the modifier to the sound player
-soundPlayer.AddModifier(apmModifier);
-
-// Add sound player to the master mixer
-Mixer.Master.AddComponent(soundPlayer);
-
-// Start capturing and playing audio
-microphoneDataProvider.StartCapture();
-soundPlayer.Play();
-
-Console.WriteLine("Audio processing with WebRTC APM is running.");
-Console.WriteLine("Press keys to modify settings:");
-Console.WriteLine("  [A] Toggle AEC");
-Console.WriteLine("  [M] Toggle AEC Mobile Mode");
-Console.WriteLine("  [N] Toggle Noise Suppression");
-Console.WriteLine("  [L] Cycle Noise Suppression Level");
-Console.WriteLine("  [1] Toggle AGC1");
-Console.WriteLine("  [2] Toggle AGC2");
-Console.WriteLine("  [H] Toggle High Pass Filter");
-Console.WriteLine("  [P] Toggle Pre-Amplifier");
-Console.WriteLine("  [+] Increase Pre-Amp Gain");
-Console.WriteLine("  [-] Decrease Pre-Amp Gain");
-Console.WriteLine("  [ESC] Exit");
-
-bool running = true;
-while (running)
-{
-    var key = Console.ReadKey(true).Key;
-
-    switch (key)
-    {
-        case ConsoleKey.A:
-            apmModifier.EchoCancellation.Enabled = !apmModifier.EchoCancellation.Enabled;
-            Console.WriteLine($"AEC Enabled: {apmModifier.EchoCancellation.Enabled}");
-            break;
-
-        case ConsoleKey.M:
-            apmModifier.EchoCancellation.MobileMode = !apmModifier.EchoCancellation.MobileMode;
-            Console.WriteLine($"AEC Mobile Mode: {apmModifier.EchoCancellation.MobileMode}");
-            break;
-
-        case ConsoleKey.N:
-            apmModifier.NoiseSuppression.Enabled = !apmModifier.NoiseSuppression.Enabled;
-            Console.WriteLine($"Noise Suppression Enabled: {apmModifier.NoiseSuppression.Enabled}");
-            break;
-
-        case ConsoleKey.L:
-            var currentLevel = (int)apmModifier.NoiseSuppression.Level;
-            var nextLevel = (NoiseSuppressionLevel)((currentLevel + 1) % Enum.GetValues(typeof(NoiseSuppressionLevel)).Length);
-            apmModifier.NoiseSuppression.Level = nextLevel;
-            Console.WriteLine($"Noise Suppression Level: {apmModifier.NoiseSuppression.Level}");
-            break;
-
-        case ConsoleKey.D1:
-            apmModifier.AutomaticGainControl.Agc1Enabled = !apmModifier.AutomaticGainControl.Agc1Enabled;
-            Console.WriteLine($"AGC1 Enabled: {apmModifier.AutomaticGainControl.Agc1Enabled}");
-            break;
-
-        case ConsoleKey.D2:
-            apmModifier.AutomaticGainControl.Agc2Enabled = !apmModifier.AutomaticGainControl.Agc2Enabled;
-            Console.WriteLine($"AGC2 Enabled: {apmModifier.AutomaticGainControl.Agc2Enabled}");
-            break;
-
-        case ConsoleKey.H:
-            apmModifier.HighPassFilterEnabled = !apmModifier.HighPassFilterEnabled;
-            Console.WriteLine($"High Pass Filter Enabled: {apmModifier.HighPassFilterEnabled}");
-            break;
-
-        case ConsoleKey.P:
-            apmModifier.PreAmplifierEnabled = !apmModifier.PreAmplifierEnabled;
-            Console.WriteLine($"Pre-Amplifier Enabled: {apmModifier.PreAmplifierEnabled}");
-            break;
-
-        case ConsoleKey.Add:
-        case ConsoleKey.OemPlus:
-            apmModifier.PreAmplifierGainFactor += 0.5f;
-            Console.WriteLine($"Pre-Amp Gain: {apmModifier.PreAmplifierGainFactor}");
-            break;
-
-        case ConsoleKey.Subtract:
-        case ConsoleKey.OemMinus:
-            apmModifier.PreAmplifierGainFactor = Math.Max(0.5f, apmModifier.PreAmplifierGainFactor - 0.5f);
-            Console.WriteLine($"Pre-Amp Gain: {apmModifier.PreAmplifierGainFactor}");
-            break;
-
-        case ConsoleKey.Escape:
-            running = false;
-            break;
-    }
-}
-
-// Clean up
-microphoneDataProvider.StopCapture();
-soundPlayer.Stop();
-Mixer.Master.RemoveComponent(soundPlayer);
-microphoneDataProvider.Dispose();
-audioEngine.Dispose();
-
-Console.WriteLine("Audio processing stopped.");
-
-// --- Offline Processing ---
-// For batch processing of an entire audio source without the real-time graph:
-
-using SoundFlow.Extensions.WebRtc.Apm.Components; // For NoiseSuppressor
-ISoundDataProvider sourceForOffline = ...; // e.g., new AssetDataProvider(...) or ChunkedDataProvider(...)
-
-// Ensure source data matches the sampleRate and channels used here!
-try
-{
-    using var offlineSuppressor = new NoiseSuppressor(sourceForOffline, 48000, 1, NoiseSuppressionLevel.VeryHigh); 
-    var encoder = AudioEngine.Instance.CreateEncoder(CleanedFilePath, "wav", SampleFormat.F32, 1, 48000);
-
-    // Option 1: Process all into a single array (for smaller files) - See Samples\SoundFlow.Samples.NoiseSuppression
-    // float[] cleanedAudio = offlineSuppressor.ProcessAll(); 
-
-    // Option 2: Process chunk-by-chunk (for large files)
-    offlineSuppressor.OnAudioChunkProcessed += (chunk) =>
-    {
-        if (encoder.IsDisposed == false)
-            encoder.Encode(chunk.ToArray()); // Handle the processed 'chunk' (ReadOnlyMemory<float>), encode to file
-    };
-    offlineSuppressor.ProcessChunks(); // This method blocks until done
-    encoder.Dispose(); // Dispose encoder to save the cleaned audio
-}
-catch (Exception ex)
-{
-    Console.Error.WriteLine($"Offline processing failed: {ex.Message}");
-}
-
+using var engine = new MiniAudio.Engine();
+using var output = engine.InitializePlaybackDevice(null, AudioFormat.DvdHq);
+using var player = new SoundPlayer(engine, output.Format,
+    new StreamDataProvider(engine, output.Format, File.OpenRead("recording.wav")));
+using var processing = new WebRtcApmModifier(output, nsEnabled: true);
+player.AddModifier(processing);
+output.MasterMixer.AddComponent(player);
+player.Play(); output.Start();
+Console.ReadLine();
+output.Stop();
 ```
+
+AEC requires a genuine final playback reference. Inspect processing stages before connecting it: physical OpenAL exposes its software graph feed, not the final spatial/effects mix. A graph-only reference must not be presented as complete device output. Capture and playback clocks may differ. See [processing stages](../../Docs/Architecture.md) and the sample's explicit capture/device wiring.
 
 ## Sample
 

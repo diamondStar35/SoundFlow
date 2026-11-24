@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
     <img src="https://raw.githubusercontent.com/LSXPrime/SoundFlow/refs/heads/master/logo.png" alt="Project Logo" width="256" height="256">
 
 # SoundFlow - Codec Extension (FFmpeg)
@@ -49,7 +49,9 @@ dotnet add package SoundFlow.Codecs.FFMpeg
 
 ### Usage
 
-To enable FFmpeg support, you simply need to register the `FFmpegCodecFactory` with your `AudioEngine` instance upon initialization. Once registered, SoundFlow will automatically use it for all supported file types.
+OpenAL registers FFmpeg by default. The example below registers it explicitly on the optional MiniAudio backend; reference that backend package as well as core. See the [backend migration guide](../../Docs/Migration.md).
+
+To enable FFmpeg support, you simply need to register the `FFmpegCodecFactory` with your `SoundFlow.Engine` instance upon initialization. Once registered, SoundFlow will automatically use it for all supported file types.
 
 ```csharp
 using SoundFlow.Abstracts;
@@ -60,7 +62,7 @@ using SoundFlow.Providers;
 using SoundFlow.Structs;
 
 // 2. Initialize the Audio Engine.
-using var engine = new MiniAudioEngine();
+using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 
 // 3. Register the FFmpeg Codec Factory.
 // This single line enables support for all FFmpeg formats.

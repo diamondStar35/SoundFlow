@@ -26,6 +26,6 @@
         <None Include="SoundFlow.Backends.OpenAL.targets" Pack="true" PackagePath="buildTransitive" />
     </ItemGroup>
     <ItemGroup>
-        <None Include="../../README.md" Pack="true" PackagePath="README.md" />
+        <None Include="../../Docs/Backends/OpenAL.md" Pack="true" PackagePath="README.md" />
     </ItemGroup>
 </Project>
