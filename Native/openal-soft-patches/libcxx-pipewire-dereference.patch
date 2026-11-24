@@ -1,0 +1,12 @@
+diff --git a/alc/backends/pipewire.cpp b/alc/backends/pipewire.cpp
+--- a/alc/backends/pipewire.cpp
++++ b/alc/backends/pipewire.cpp
+@@ -1408,7 +1408,7 @@
+     RemoveDevice(id);
+ 
+     auto node_end = std::ranges::remove_if(mNodeList, [id](NodeProxy const &node) noexcept
+-    { return node.mId == id; }, &std::unique_ptr<NodeProxy>::operator*);
++    { return node.mId == id; }, [](auto const &node) -> auto& { return *node; });
+     mNodeList.erase(node_end.begin(), node_end.end());
+ 
+     if(mDefaultMetadata && mDefaultMetadata->mId == id)

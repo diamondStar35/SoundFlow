@@ -1,0 +1,110 @@
+name: Build OpenAL Soft
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64, os: windows-2025, msystem: MINGW64, prefix: mingw-w64-x86_64, test: true }
+          - { rid: win-arm64, os: windows-11-arm, msystem: CLANGARM64, prefix: mingw-w64-clang-aarch64, test: true }
+          - { rid: linux-x64, os: ubuntu-24.04, test: true }
+          - { rid: linux-arm64, os: ubuntu-24.04-arm, test: true }
+          - { rid: osx-x64, os: macos-15-intel, test: true }
+          - { rid: osx-arm64, os: macos-15, test: true }
+          - { rid: ios-arm64, os: macos-15, test: false }
+          - { rid: android-arm64, os: ubuntu-24.04, test: false }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Checkout pinned OpenAL Soft
+        uses: actions/checkout@v4
+        with:
+          repository: kcat/openal-soft
+          ref: b2c48f7718ef3fcf67921a8b6534c4914e328970
+          path: Native/openal-soft
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Windows toolchain
+        if: startsWith(matrix.rid, 'win-')
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          install: >-
+            ${{ matrix.prefix }}-toolchain
+            ${{ matrix.prefix }}-cmake
+            ${{ matrix.prefix }}-ninja
+            ${{ matrix.prefix }}-python
+      - name: Linux dependencies
+        if: startsWith(matrix.os, 'ubuntu-')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libasound2-dev libpulse-dev libpipewire-0.3-dev
+      - name: Apple tools
+        if: startsWith(matrix.os, 'macos-')
+        run: brew install ninja
+      - name: Android NDK
+        if: matrix.rid == 'android-arm64'
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+      - name: Build Windows
+        if: startsWith(matrix.rid, 'win-')
+        shell: msys2 {0}
+        run: python Scripts/build-openal.py --rid '${{ matrix.rid }}' --source Native/openal-soft
+      - name: Build Unix
+        if: ${{ !startsWith(matrix.rid, 'win-') }}
+        env:
+          ANDROID_NDK_ROOT: ${{ steps.ndk.outputs.ndk-path }}
+        run: python Scripts/build-openal.py --rid '${{ matrix.rid }}' --source Native/openal-soft
+      - name: Verify architecture and native dependencies
+        run: python Scripts/verify-native-artifacts.py artifacts/openal/runtimes --rid '${{ matrix.rid }}'
+      - uses: actions/setup-dotnet@v4
+        if: matrix.test
+        with:
+          dotnet-version: '8.0.x'
+      - name: Stage this runtime for offline integration tests
+        if: matrix.test
+        run: python -c "import shutil; shutil.copytree('artifacts/openal/runtimes', 'Backends/SoundFlow.Backends.OpenAL/runtimes', dirs_exist_ok=True)"
+      - name: Offline backend tests
+        if: matrix.test
+        run: dotnet test Tests/SoundFlow.Tests/SoundFlow.Tests.csproj -c Release --nologo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openal-${{ matrix.rid }}
+          path: artifacts/openal/runtimes/${{ matrix.rid }}
+          if-no-files-found: error
+
+  package:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: openal-*
+          path: artifacts
+      - name: Assemble and require the complete runtime matrix
+        run: |
+          mkdir -p runtimes
+          for artifact in artifacts/openal-*; do
+            rid="${artifact##*/openal-}"
+            cp -R "$artifact" "runtimes/$rid"
+          done
+          python3 Scripts/verify-native-artifacts.py runtimes
+          zip -r openal-soft-runtimes.zip runtimes
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openal-soft-runtimes
+          path: openal-soft-runtimes.zip

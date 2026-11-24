@@ -356,3 +356,5 @@ MigrationBackup/
 /runtimes
 /nupkgs
 /Models_Data.json
+
+/Native/openal-soft/

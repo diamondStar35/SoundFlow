@@ -1,4 +1,4 @@
-﻿name: Create Release
+name: Create Release
 
 on:
   workflow_dispatch:
@@ -18,7 +18,17 @@ on:
         type: boolean
         default: true
       release_soundflow_main:
-        description: 'Build and release the main SoundFlow package? (Includes Miniaudio native libs)'
+        description: 'Build and release the managed SoundFlow core package?'
+        required: true
+        type: boolean
+        default: true
+      release_miniaudio:
+        description: 'Build and release the optional MiniAudio backend?'
+        required: true
+        type: boolean
+        default: true
+      release_openal:
+        description: 'Build and release OpenAL Soft with FFmpeg codecs?'
         required: true
         type: boolean
         default: true
@@ -46,6 +56,8 @@ jobs:
     # Only run the job if at least one package is selected
     if: >
       inputs.release_soundflow_main == true ||
+      inputs.release_miniaudio == true ||
+      inputs.release_openal == true ||
       inputs.release_ffmpeg == true ||
       inputs.release_webrtc == true
     runs-on: ubuntu-latest
@@ -63,21 +75,24 @@ jobs:
         id: native_builds
         # This step runs if any package requiring native libs is selected.
         if: >
-          inputs.release_soundflow_main == true ||
+          inputs.release_miniaudio == true ||
+          inputs.release_openal == true ||
           inputs.release_ffmpeg == true ||
           inputs.release_webrtc == true
         env:
           GH_TOKEN: ${{ secrets.WORKFLOW_TOKEN }}
           BRANCH_REF: ${{ github.ref_name }}
           # Pass inputs to the script
-          # Miniaudio is triggered if the main SoundFlow package is being released.
-          RELEASE_MINIAUDIO: ${{ inputs.release_soundflow_main }}
-          RELEASE_FFMPEG: ${{ inputs.release_ffmpeg }}
+          # Each optional backend has its own native build.
+          RELEASE_MINIAUDIO: ${{ inputs.release_miniaudio }}
+          RELEASE_OPENAL: ${{ inputs.release_openal }}
+          RELEASE_FFMPEG: ${{ inputs.release_ffmpeg || inputs.release_openal }}
           RELEASE_WEBRTC: ${{ inputs.release_webrtc }}
         run: |
           set -e # Exit immediately if a command fails
-          
+
           declare -A WORKFLOWS_TO_RUN
+          if [[ "$RELEASE_OPENAL" == "true" ]]; then WORKFLOWS_TO_RUN["openal"]="build-openal.yml"; fi
           if [[ "$RELEASE_MINIAUDIO" == "true" ]]; then WORKFLOWS_TO_RUN["miniaudio"]="build-miniaudio.yml"; fi
           if [[ "$RELEASE_WEBRTC" == "true" ]]; then WORKFLOWS_TO_RUN["webrtc"]="build-extensions-apm.yml"; fi
           if [[ "$RELEASE_FFMPEG" == "true" ]]; then WORKFLOWS_TO_RUN["ffmpeg"]="build-ffmpeg.yml"; fi
@@ -86,18 +101,18 @@ jobs:
             echo "No native builds required for selected packages. Skipping."
             exit 0
           fi
-          
+
           declare -A RUN_IDS
-          
+
           echo "Triggering ${#WORKFLOWS_TO_RUN[@]} native build workflow(s) on ref: $BRANCH_REF"
           for key in "${!WORKFLOWS_TO_RUN[@]}"; do
             gh workflow run "${WORKFLOWS_TO_RUN[$key]}" --ref "$BRANCH_REF" &
           done
           wait
-          
+
           echo "All selected workflows triggered. Waiting for API..."
           sleep 15
-          
+
           echo "Fetching run IDs for commit ${{ github.sha }}..."
           for key in "${!WORKFLOWS_TO_RUN[@]}"; do
             run_id=$(gh run list --workflow="${WORKFLOWS_TO_RUN[$key]}" --branch "$BRANCH_REF" --json databaseId,headSha -q '.[] | select(.headSha=="${{ github.sha }}") | .databaseId' | head -n 1)
@@ -110,13 +125,13 @@ jobs:
             # Set output for this specific run
             echo "${key}_run_id=${RUN_IDS[$key]}" >> "$GITHUB_OUTPUT"
           done
-          
+
           echo "Waiting for all build workflows to complete..."
           for id in "${RUN_IDS[@]}"; do
             gh run watch "$id" --interval 60 &
           done
           wait
-          
+
           echo "Checking final conclusions..."
           all_successful=true
           for key in "${!RUN_IDS[@]}"; do
@@ -134,7 +149,7 @@ jobs:
           echo "All triggered native build workflows completed successfully."
 
       - name: Download Miniaudio Artifact
-        if: inputs.release_soundflow_main == true
+        if: inputs.release_miniaudio == true
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-miniaudio.yml
@@ -152,7 +167,7 @@ jobs:
           run_id: ${{ steps.native_builds.outputs.webrtc_run_id }}
 
       - name: Download FFmpeg Artifact
-        if: inputs.release_ffmpeg == true
+        if: inputs.release_ffmpeg == true || inputs.release_openal == true
         uses: dawidd6/action-download-artifact@v6
         with:
           workflow: build-ffmpeg.yml
@@ -160,9 +175,19 @@ jobs:
           path: native-artifacts/soundflow-ffmpeg-runtimes
           run_id: ${{ steps.native_builds.outputs.ffmpeg_run_id }}
 
+      - name: Download OpenAL Artifact
+        if: inputs.release_openal == true
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: build-openal.yml
+          name: openal-soft-runtimes
+          path: native-artifacts/openal-soft-runtimes
+          run_id: ${{ steps.native_builds.outputs.openal_run_id }}
+
       - name: Extract and Place Runtimes
         if: >
-          inputs.release_soundflow_main == true ||
+          inputs.release_miniaudio == true ||
+          inputs.release_openal == true ||
           inputs.release_ffmpeg == true ||
           inputs.release_webrtc == true
         run: |
@@ -184,7 +209,8 @@ jobs:
             fi
           }
 
-          unzip_and_place "miniaudio-native-libraries" "Src/Backends/MiniAudio/runtimes"
+          unzip_and_place "openal-soft-runtimes" "Backends/SoundFlow.Backends.OpenAL/runtimes"
+          unzip_and_place "miniaudio-native-libraries" "Backends/SoundFlow.Backends.MiniAudio/runtimes"
           unzip_and_place "webrtc-audio-processing" "Extensions/SoundFlow.Extensions.WebRtc.Apm/runtimes"
           unzip_and_place "soundflow-ffmpeg-runtimes" "Codecs/SoundFlow.Codecs.FFMpeg/runtimes"
 
@@ -209,14 +235,20 @@ jobs:
             echo "Creating NuGet package"
             dotnet pack "$project_file" --configuration Release -o ./packages
           }
-          
+
           mkdir -p ./packages
-          
-          if [[ "${{ inputs.release_soundflow_main }}" == "true" ]]; then
-            update_and_pack "Src/SoundFlow.csproj"
+
+          # All selected packages depend on the managed core at this release version.
+          update_and_pack "Src/SoundFlow.csproj"
+          if [[ "${{ inputs.release_miniaudio }}" == "true" ]]; then
+            update_and_pack "Backends/SoundFlow.Backends.MiniAudio/SoundFlow.Backends.MiniAudio.csproj"
           fi
-          if [[ "${{ inputs.release_ffmpeg }}" == "true" ]]; then
+          if [[ "${{ inputs.release_ffmpeg || inputs.release_openal }}" == "true" ]]; then
             update_and_pack "Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj"
+          fi
+          if [[ "${{ inputs.release_openal }}" == "true" ]]; then
+            python3 Scripts/verify-native-artifacts.py Backends/SoundFlow.Backends.OpenAL/runtimes
+            update_and_pack "Backends/SoundFlow.Backends.OpenAL/SoundFlow.Backends.OpenAL.csproj"
           fi
           if [[ "${{ inputs.release_webrtc }}" == "true" ]]; then
             update_and_pack "Extensions/SoundFlow.Extensions.WebRtc.Apm/SoundFlow.Extensions.WebRtc.Apm.csproj"
