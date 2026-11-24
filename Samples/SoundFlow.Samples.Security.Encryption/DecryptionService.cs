@@ -1,4 +1,6 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Providers;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Security;
@@ -21,12 +23,12 @@ public static class DecryptionService
     /// <param name="outputFile">The path to save the decrypted WAV file.</param>
     /// <param name="secretKey">The 32-byte secret key used for encryption.</param>
     /// <param name="publicKey">The PEM-encoded public key. If provided, the file signature (embedded or detached) will be verified.</param>
-    public static async Task DecryptAsync(AudioEngine engine, string inputFile, string outputFile, byte[] secretKey,
+    public static async Task DecryptAsync(Engine engine, string inputFile, string outputFile, byte[] secretKey,
         string? publicKey = null)
     {
         Console.WriteLine($"Loading encrypted container '{inputFile}'...");
 
-        Result<ISoundDataProvider> providerResult;
+        Result<IDataProvider> providerResult;
 
         // The provider returned by Decrypt/VerifyAndDecrypt takes ownership of this stream.
         var fileStream = new FileStream(inputFile, FileMode.Open, FileAccess.Read);
@@ -34,7 +36,7 @@ public static class DecryptionService
         if (!string.IsNullOrEmpty(publicKey))
         {
             Console.WriteLine("Verifying digital signature before decryption...");
-            
+
             // Check for detached signature first
             string? signature = null;
             var sigPath = inputFile + ".sig";
@@ -90,7 +92,7 @@ public static class DecryptionService
         var buffer = new float[4096];
         while (true)
         {
-            var read = provider.ReadBytes(buffer);
+            var read = provider.ReadSamples(buffer);
             if (read == 0) break;
             encoder.Encode(buffer.AsSpan(0, read));
         }

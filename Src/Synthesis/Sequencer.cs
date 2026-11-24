@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Metadata.Midi;
 using SoundFlow.Midi.Interfaces;
@@ -21,7 +22,7 @@ public sealed class Sequencer : SoundComponent
 
     /// <inheritdoc />
     public override string Name { get; set; } = "Sequencer";
-    
+
     /// <summary>
     /// Gets or sets the optional context for this sequencer. If provided, the sequencer will synchronize
     /// its timing to this external context (e.g., a composition's master clock). If null, it will use
@@ -55,12 +56,12 @@ public sealed class Sequencer : SoundComponent
             // If a context is provided, use it for master timing.
             if (Context != null)
                 return MidiTimeConverter.GetTimeSpanForTick(_currentTick, DataProvider.TicksPerQuarterNote, Context.TempoTrack);
-            
+
             // Otherwise, use the data provider's internal timing (standalone mode).
             return DataProvider.GetTimeSpanForTick(_currentTick);
         }
     }
-    
+
     /// <summary>
     /// Gets the duration of the sequence. The calculation uses the master context if available,
     /// otherwise it falls back to the data provider's internal tempo.
@@ -72,7 +73,7 @@ public sealed class Sequencer : SoundComponent
             // If a context is provided, use it for master timing.
             if (Context != null)
                 return MidiTimeConverter.GetTimeSpanForTick(DataProvider.LengthTicks, DataProvider.TicksPerQuarterNote, Context.TempoTrack);
-            
+
             // Otherwise, use the data provider's internal timing (standalone mode).
             return DataProvider.Duration;
         }
@@ -86,7 +87,7 @@ public sealed class Sequencer : SoundComponent
     /// <param name="format">The audio format, used for timing calculations.</param>
     /// <param name="dataProvider">The provider of MIDI data to be sequenced.</param>
     /// <param name="target">The MIDI controllable component that will receive the events.</param>
-    public Sequencer(AudioEngine engine, AudioFormat format, MidiDataProvider dataProvider, IMidiControllable target) : base(engine, format)
+    public Sequencer(Engine engine, AudioFormat format, MidiDataProvider dataProvider, IMidiControllable target) : base(engine, format)
     {
         DataProvider = dataProvider;
         _target = target;
@@ -131,10 +132,10 @@ public sealed class Sequencer : SoundComponent
     {
         // Send an "All Notes Off" before seeking to prevent stuck notes.
         _target.ProcessMidiMessage(new MidiMessage(0xB0, 123, 0));
-        
+
         // Use the appropriate time conversion logic.
-        _currentTick = Context != null 
-            ? MidiTimeConverter.GetTickForTimeSpan(time, DataProvider.TicksPerQuarterNote, Context.TempoTrack) 
+        _currentTick = Context != null
+            ? MidiTimeConverter.GetTickForTimeSpan(time, DataProvider.TicksPerQuarterNote, Context.TempoTrack)
             : DataProvider.GetTickForTimeSpan(time);
     }
 
@@ -154,7 +155,7 @@ public sealed class Sequencer : SoundComponent
         var endTime = CurrentTime + blockDuration;
 
         var startTick = _currentTick;
-        var endTick = Context != null 
+        var endTick = Context != null
             ? MidiTimeConverter.GetTickForTimeSpan(endTime, DataProvider.TicksPerQuarterNote, Context.TempoTrack)
             : DataProvider.GetTickForTimeSpan(endTime);
 

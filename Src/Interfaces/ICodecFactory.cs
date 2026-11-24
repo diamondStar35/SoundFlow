@@ -1,4 +1,4 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Interfaces;
@@ -16,7 +16,7 @@ public interface ICodecFactory
     /// This ID is used for unregistering and re-prioritizing codecs.
     /// </summary>
     string FactoryId { get; }
-    
+
     /// <summary>
     /// Gets a collection of unique, lowercase string identifiers for the audio formats this factory supports.
     /// For example, a factory for FFmpeg might return ["mp3", "aac", "ogg", "opus"].
@@ -26,7 +26,7 @@ public interface ICodecFactory
 
     /// <summary>
     /// Gets the default priority of this factory. This priority is used upon initial registration but can be
-    /// overridden at runtime using <see cref="AudioEngine.SetCodecPriority"/>. When multiple factories are
+    /// overridden at runtime using <see cref="SoundFlow.Engine.SetCodecPriority"/>. When multiple factories are
     /// registered for the same format, the one with the highest priority number will be tried first.
     /// Built-in engine codecs use a low priority (e.g., 0).
     /// </summary>

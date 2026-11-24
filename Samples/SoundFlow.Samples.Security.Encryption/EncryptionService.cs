@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+using Engine = SoundFlow.Engine;
+using System.Security.Cryptography;
 using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
@@ -21,12 +22,12 @@ public static class EncryptionService
     /// <param name="secretKey">The 32-byte secret key for encryption.</param>
     /// <param name="privateKey">The PEM-encoded private key. If provided, the output will be digitally signed.</param>
     /// <param name="embedSignature">If true and <paramref name="privateKey"/> is provided, the signature will be embedded in the file header.</param>
-    public static async Task EncryptAsync(AudioEngine engine, string sourceFile, string outputFile, byte[] secretKey, string? privateKey = null, bool embedSignature = false)
+    public static async Task EncryptAsync(Engine engine, string sourceFile, string outputFile, byte[] secretKey, string? privateKey = null, bool embedSignature = false)
     {
         Console.WriteLine($"Loading '{sourceFile}' for encryption...");
         await using var sourceStream = new FileStream(sourceFile, FileMode.Open, FileAccess.Read);
         using var provider = new AssetDataProvider(engine, sourceStream);
-        
+
         // Generate a random 12-byte IV (Nonce). This MUST be unique for each encryption operation
         // with the same key to ensure security.
         var iv = RandomNumberGenerator.GetBytes(12);
@@ -44,14 +45,14 @@ public static class EncryptionService
             Console.WriteLine(embedSignature ? "Digital Signing enabled (Embedded)." : "Digital Signing enabled (Detached).");
             signConfig = new SignatureConfiguration { PrivateKeyPem = privateKey };
         }
-        
+
         Console.WriteLine($"Streaming encrypted data to container '{outputFile}'...");
-        
-        // Critical: When signing is enabled, the destination stream must be Readable and Seekable 
+
+        // Critical: When signing is enabled, the destination stream must be Readable and Seekable
         // because the signer needs to read the file hash after encryption.
         // FileAccess.ReadWrite allows this.
         await using var destinationStream = new FileStream(outputFile, FileMode.Create, FileAccess.ReadWrite);
-        
+
         // Pass embedSignature flag to AudioEncryptor
         var signature = await AudioEncryptor.EncryptAsync(provider, destinationStream, config, signConfig, embedSignature);
 

@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Samples.Security.Authentication;
+namespace SoundFlow.Samples.Security.Authentication;
 
 /// <summary>
 /// Handles the selection and creation of the target file for signing and verification.

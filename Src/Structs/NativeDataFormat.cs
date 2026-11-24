@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using SoundFlow.Enums;
 
 namespace SoundFlow.Structs;
@@ -6,11 +5,6 @@ namespace SoundFlow.Structs;
 /// <summary>
 /// Represents a native data format with audio format, channels, sample rate, and flags.
 /// </summary>
-/// <remarks>
-/// This struct is used to get the supported native data format of an audio device using the MiniAudio library.
-/// Can be used by reading an array from a pointer to `NativeDataFormats` of <see cref="SoundFlow.Structs.DeviceInfo"/> struct.
-/// </remarks>
-[StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
 public record struct NativeDataFormat
 {
     /// <summary>
@@ -28,8 +22,4 @@ public record struct NativeDataFormat
     /// </summary>
     public uint SampleRate;
 
-    /// <summary>
-    /// Additional flags for the native data format.
-    /// </summary>
-    public uint Flags;
 }

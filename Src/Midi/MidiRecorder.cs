@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using SoundFlow.Metadata.Midi;
 using SoundFlow.Metadata.Midi.Enums;
@@ -36,7 +36,7 @@ public sealed class MidiRecorder : IDisposable
     /// Gets a value indicating whether the recorder is currently active.
     /// </summary>
     public bool IsRecording => _isRecording;
-    
+
     /// <summary>
     /// Gets the timeline start time of the current recording session.
     /// </summary>
@@ -50,7 +50,7 @@ public sealed class MidiRecorder : IDisposable
     /// <summary>
     /// Initializes a new instance of the <see cref="MidiRecorder"/> class.
     /// </summary>
-    /// <param name="inputDevice">The MIDI input device to record from.</param>
+    /// <param name="inputDevice">The MIDI input device to record </param>
     public MidiRecorder(MidiInputDevice inputDevice)
     {
         _inputDevice = inputDevice;
@@ -60,7 +60,7 @@ public sealed class MidiRecorder : IDisposable
     /// Starts the recording process.
     /// </summary>
     public void StartRecording() => StartRecording(TimeSpan.Zero);
-    
+
     internal void StartRecording(TimeSpan startTime)
     {
         lock (_lock)
@@ -94,7 +94,7 @@ public sealed class MidiRecorder : IDisposable
             RecordingStopped?.Invoke(this, provider);
         }
     }
-    
+
     /// <summary>
     /// Adds a time offset, used for loop recording to correctly place notes on subsequent passes.
     /// </summary>
@@ -106,7 +106,7 @@ public sealed class MidiRecorder : IDisposable
             _currentLoopOffset += offset;
         }
     }
-    
+
     /// <summary>
     /// This method is a no-op kept for API compatibility. Timing is now handled by a high-resolution timer.
     /// </summary>
@@ -133,13 +133,13 @@ public sealed class MidiRecorder : IDisposable
             {
                 var absoluteEventTime = StartTime + timedMessage.Timestamp;
                 var absoluteTick = timeToTickConverter(absoluteEventTime);
-                
+
                 var deltaTicks = absoluteTick - lastEventTick;
                 midiTrack.AddEvent(new ChannelEvent(deltaTicks, timedMessage.Message));
                 lastEventTick = absoluteTick;
             }
         }
-        
+
         midiTrack.AddEvent(new MetaEvent(0, MetaEventType.EndOfTrack, []));
         midiFile.AddTrack(midiTrack);
 

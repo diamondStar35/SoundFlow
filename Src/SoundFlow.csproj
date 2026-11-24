@@ -23,17 +23,8 @@
         <Company>LSXPrime</Company>
     </PropertyGroup>
 
-    <PropertyGroup Condition="'$(IOSHostBuild)' == 'true'">
-        <DefineConstants>$(DefineConstants);SOUNDFLOW_IOS_FRAMEWORK_IMPORTS</DefineConstants>
-    </PropertyGroup>
-
-    <ItemGroup>
-        <None Include="Backends\MiniAudio\runtimes\**\*.*">
-            <Link>runtimes\%(RecursiveDir)%(Filename)%(Extension)</Link>
-            <PackagePath>runtimes</PackagePath>
-            <Pack>true</Pack>
-        </None>
-        <None Include="..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"
+<ItemGroup>
+<None Include="..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"
               Pack="true"
               PackagePath="\"
               CopyToOutputDirectory="PreserveNewest" />
@@ -44,7 +35,7 @@
         <None Include="..\LICENSE.md" Pack="true" PackagePath="" />
         <None Include="..\CONTRIBUTING.md" Pack="true" PackagePath="" />
         <None Include="..\logo.png" Pack="true" PackagePath="" />
-        <None Include="SoundFlow.targets" Pack="true" PackagePath="" />
+
     </ItemGroup>
     <ItemGroup><InternalsVisibleTo Include="SoundFlow.Tests" /></ItemGroup>
 </Project>

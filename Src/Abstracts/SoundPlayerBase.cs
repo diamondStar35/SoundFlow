@@ -1,5 +1,5 @@
 using SoundFlow.Providers;
-using Engine = SoundFlow.Abstracts.AudioEngine;
+using Engine = SoundFlow.Engine;
 using Transport = SoundFlow.Playback.Transport;
 using SoundFlow.Components;
 using SoundFlow.Enums;
@@ -9,11 +9,11 @@ using SoundFlow.Structs;
 namespace SoundFlow.Abstracts;
 
 /// <summary>A software graph player backed by the shared PCM transport used by native sources.</summary>
-public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
+public abstract class SoundPlayerBase : SoundComponent, IPlayer
 {
     internal Transport Transport { get; }
     /// <summary>Creates a graph player which owns its provider.</summary>
-    protected SoundPlayerBase(Engine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format)
+    protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format)
     {
         Transport = new Transport(format, dataProvider);
         Transport.PlaybackEnded += (_, args) => OnPlaybackEnded();
@@ -23,7 +23,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     /// <inheritdoc />
     public PlaybackState State { get => Transport.State; internal set => Transport.State = value; }
     /// <inheritdoc />
-    public ISoundDataProvider DataProvider { get => Transport.DataProvider; }
+    public IDataProvider DataProvider { get => Transport.DataProvider; }
     /// <inheritdoc />
     public bool IsLooping { get => Transport.IsLooping; set => Transport.IsLooping = value; }
     /// <inheritdoc />

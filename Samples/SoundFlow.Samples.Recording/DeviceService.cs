@@ -1,4 +1,6 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Samples.Recording;
@@ -13,7 +15,7 @@ public static class DeviceService
     /// </summary>
     /// <param name="engine">The audio engine instance.</param>
     /// <returns>The selected device info, or null if cancelled/invalid.</returns>
-    public static DeviceInfo? SelectInputDevice(AudioEngine engine)
+    public static DeviceInfo? SelectInputDevice(Engine engine)
     {
         var devices = engine.CaptureDevices;
 

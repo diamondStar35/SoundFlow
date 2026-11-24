@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 
 namespace SoundFlow.Samples.Security.Encryption;
@@ -15,7 +16,7 @@ public static class VerificationService
     /// <param name="originalFile">The path to the first audio file.</param>
     /// <param name="decryptedFile">The path to the second audio file.</param>
     /// <returns>True if the files are identical, otherwise false.</returns>
-    public static async Task<bool> AreFilesIdenticalAsync(AudioEngine engine, string originalFile, string decryptedFile)
+    public static async Task<bool> AreFilesIdenticalAsync(Engine engine, string originalFile, string decryptedFile)
     {
         Console.WriteLine($"Comparing Audio Samples of '{originalFile}' and '{decryptedFile}'...");
 
@@ -39,8 +40,8 @@ public static class VerificationService
 
         while (true)
         {
-            var read1 = provider1.ReadBytes(buf1);
-            var read2 = provider2.ReadBytes(buf2);
+            var read1 = provider1.ReadSamples(buf1);
+            var read2 = provider2.ReadSamples(buf2);
 
             if (read1 != read2)
             {

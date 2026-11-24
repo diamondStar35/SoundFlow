@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
 using SoundFlow.Security.Configuration;
@@ -18,7 +19,7 @@ public static class WatermarkExtractionService
     /// <param name="inputFile">The path to the (potentially modified) watermarked audio file.</param>
     /// <param name="config">The watermark configuration used for embedding.</param>
     /// <returns>A result object containing the extracted message or an error.</returns>
-    public static async Task<Result<string>> ExtractAsync(AudioEngine engine, string inputFile, WatermarkConfiguration config)
+    public static async Task<Result<string>> ExtractAsync(Engine engine, string inputFile, WatermarkConfiguration config)
     {
         Console.WriteLine($"Attempting to extract watermark from '{inputFile}'...");
         await using var stream = new FileStream(inputFile, FileMode.Open);

@@ -1,4 +1,4 @@
-﻿using SoundFlow.Enums;
+using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Structs;
@@ -30,7 +30,7 @@ public enum QueueFullBehavior
 ///     Provides audio data from an in-memory queue that is fed samples externally.
 ///     This provider is ideal for scenarios where audio data is generated or received in chunks.
 /// </summary>
-public class QueueDataProvider : ISoundDataProvider
+public class QueueDataProvider : IDataProvider
 {
     private readonly object _lock = new();
     private readonly Queue<float> _sampleQueue = new();
@@ -58,10 +58,10 @@ public class QueueDataProvider : ISoundDataProvider
     {
         if (format.SampleRate <= 0)
             throw new ArgumentOutOfRangeException(nameof(format), "Sample rate must be positive.");
-        
+
         if (!maxSamples.HasValue && fullBehavior != QueueFullBehavior.Throw)
             throw new ArgumentException("QueueFullBehavior cannot be set to Block or Drop for a queue with no sample limit.", nameof(fullBehavior));
-        
+
         SampleRate = format.SampleRate;
         SampleFormat = format.Format;
         _maxSamples = maxSamples;
@@ -69,7 +69,7 @@ public class QueueDataProvider : ISoundDataProvider
     }
 
     #region Properties
-    
+
     /// <inheritdoc />
     public int Position { get; private set; }
 
@@ -104,18 +104,18 @@ public class QueueDataProvider : ISoundDataProvider
             }
         }
     }
-    
+
     /// <summary>
     ///     Gets the total number of samples enqueued so far.
     /// </summary>
     public long TotalSamplesEnqueued
     {
-        get 
-        { 
+        get
+        {
             lock (_lock)
             {
                 return _totalSamplesEnqueued;
-            } 
+            }
         }
     }
 
@@ -167,7 +167,7 @@ public class QueueDataProvider : ISoundDataProvider
                         break;
                 }
             }
-            
+
             foreach (var sample in samples)
             {
                 _sampleQueue.Enqueue(sample);
@@ -177,10 +177,10 @@ public class QueueDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed || buffer.IsEmpty) return 0;
-        
+
         var samplesRead = 0;
         var shouldFireEndOfStream = false;
         var spaceWasFreed = false;
@@ -211,7 +211,7 @@ public class QueueDataProvider : ISoundDataProvider
                 shouldFireEndOfStream = true;
                 _endOfStreamFired = true;
             }
-            
+
             // If space was freed, notify any waiting producer threads.
             if (spaceWasFreed)
             {
@@ -241,7 +241,7 @@ public class QueueDataProvider : ISoundDataProvider
             _totalSamplesEnqueued = 0;
             _isAddingCompleted = false;
             _endOfStreamFired = false;
-            
+
             // Wake up any threads that were blocked, as the queue is now empty.
             Monitor.PulseAll(_lock);
         }
@@ -249,7 +249,7 @@ public class QueueDataProvider : ISoundDataProvider
 
     /// <summary>
     ///     Marks the end of sample addition, indicating that the producer is finished adding samples.
-    ///     Any threads blocked in <see cref="ReadBytes"/> will be unblocked.
+    ///     Any threads blocked in <see cref="ReadSamples"/> will be unblocked.
     /// </summary>
     public void CompleteAdding()
     {
@@ -267,11 +267,11 @@ public class QueueDataProvider : ISoundDataProvider
     public void Dispose()
     {
         if (IsDisposed) return;
-        
+
         lock (_lock)
         {
             if (IsDisposed) return;
-            
+
             IsDisposed = true;
             _sampleQueue.Clear();
 

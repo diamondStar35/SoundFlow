@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Security.Cryptography;
 using System.Text;
 using SoundFlow.Interfaces;
@@ -34,9 +34,9 @@ public static class AudioEncryptor
     /// Returns null if no signing occurred or if the signature was embedded.
     /// </returns>
     public static async Task<string?> EncryptAsync(
-        ISoundDataProvider source, 
-        Stream destinationStream, 
-        EncryptionConfiguration config, 
+        IDataProvider source,
+        Stream destinationStream,
+        EncryptionConfiguration config,
         SignatureConfiguration? signingConfig = null,
         bool embedSignature = false)
     {
@@ -61,7 +61,7 @@ public static class AudioEncryptor
         // 2. Prepare source
         if (source.CanSeek) source.Seek(0);
         using var modifier = new StreamEncryptionModifier(config) { Enabled = true };
-        
+
         var sampleBuffer = ArrayPool<float>.Shared.Rent(BufferSize);
         var byteBuffer = ArrayPool<byte>.Shared.Rent(BufferSize * sizeof(float));
 
@@ -72,7 +72,7 @@ public static class AudioEncryptor
                 // Process the next block of audio synchronously
                 var bytesAvailable = ProcessNextBlock(source, modifier, sampleBuffer, byteBuffer, format.Channels);
                 if (bytesAvailable == 0) break;
-                
+
                 // Write the encrypted block to the destination stream asynchronously
                 await destinationStream.WriteAsync(byteBuffer.AsMemory(0, bytesAvailable));
             }
@@ -116,30 +116,30 @@ public static class AudioEncryptor
                 writer.Write(sigBytes.Length);
                 writer.Write(sigBytes);
                 writer.Flush();
-                
+
                 // Return to end of stream
                 destinationStream.Seek(0, SeekOrigin.End);
                 return null; // Signature is embedded
             }
-            
+
             // Return detached signature
             destinationStream.Seek(0, SeekOrigin.End);
             return signatureBase64;
         }
-        
+
         return null;
 
         // Read bytes from the source provider and encrypt them in-place, method isolated to allow using spans in async context
-        static int ProcessNextBlock(ISoundDataProvider provider, StreamEncryptionModifier encryptionModifier, float[] floatArr, byte[] byteArr, int channelCount)
+        static int ProcessNextBlock(IDataProvider provider, StreamEncryptionModifier encryptionModifier, float[] floatArr, byte[] byteArr, int channelCount)
         {
             // Create Spans here. Since this method is not async, this is perfectly valid.
             var spanFloat = floatArr.AsSpan();
-            
-            var samplesRead = provider.ReadBytes(spanFloat);
+
+            var samplesRead = provider.ReadSamples(spanFloat);
             if (samplesRead == 0) return 0;
 
             var validSlice = spanFloat[..samplesRead];
-            
+
             // Encrypt in-place
             encryptionModifier.Process(validSlice, channelCount);
 
@@ -156,9 +156,9 @@ public static class AudioEncryptor
     /// Optionally signs the result (either embedded or detached).
     /// </summary>
     public static async Task EncryptAsync(
-        ISoundDataProvider source, 
-        string destinationPath, 
-        EncryptionConfiguration config, 
+        IDataProvider source,
+        string destinationPath,
+        EncryptionConfiguration config,
         SignatureConfiguration? signingConfig = null,
         bool embedSignature = false)
     {
@@ -178,7 +178,7 @@ public static class AudioEncryptor
     /// <param name="sourceStream">The stream containing the secure audio data.</param>
     /// <param name="key">The decryption key.</param>
     /// <returns>A result containing a streaming provider, or an error.</returns>
-    public static Result<ISoundDataProvider> Decrypt(Stream sourceStream, byte[] key)
+    public static Result<IDataProvider> Decrypt(Stream sourceStream, byte[] key)
     {
         try
         {
@@ -187,7 +187,7 @@ public static class AudioEncryptor
             if (headerResult.IsFailure)
             {
                 sourceStream.Dispose();
-                return Result<ISoundDataProvider>.Fail(headerResult.Error!);
+                return Result<IDataProvider>.Fail(headerResult.Error!);
             }
 
             var (format, iv, dataOffset, embeddedSigBytes, _) = headerResult.Value;
@@ -214,8 +214,8 @@ public static class AudioEncryptor
                     IsLossless = true
                 }
             };
-            
-            return Result<ISoundDataProvider>.Ok(provider);
+
+            return Result<IDataProvider>.Ok(provider);
         }
         catch (Exception ex)
         {
@@ -242,9 +242,9 @@ public static class AudioEncryptor
     /// <param name="sourceFilePath">The path to the secure audio file.</param>
     /// <param name="key">The decryption key.</param>
     /// <returns>A result containing a streaming provider, or an error.</returns>
-    public static Result<ISoundDataProvider> Decrypt(string sourceFilePath, byte[] key)
+    public static Result<IDataProvider> Decrypt(string sourceFilePath, byte[] key)
     {
-        if (!File.Exists(sourceFilePath)) 
+        if (!File.Exists(sourceFilePath))
             return new NotFoundError("File", $"The specified file was not found: '{sourceFilePath}'.");
 
         try
@@ -279,10 +279,10 @@ public static class AudioEncryptor
     /// <param name="signingConfig">The configuration containing the Public Key.</param>
     /// <param name="detachedSignature">Optional detached signature. If null, the method looks for an embedded signature.</param>
     /// <returns>A result containing the decrypted provider if verification succeeds.</returns>
-    public static async Task<Result<ISoundDataProvider>> VerifyAndDecryptAsync(
-        string sourceFilePath, 
-        byte[] key, 
-        SignatureConfiguration signingConfig, 
+    public static async Task<Result<IDataProvider>> VerifyAndDecryptAsync(
+        string sourceFilePath,
+        byte[] key,
+        SignatureConfiguration signingConfig,
         string? detachedSignature = null)
     {
         if (!File.Exists(sourceFilePath))
@@ -292,8 +292,8 @@ public static class AudioEncryptor
         {
             var fileStream = new FileStream(sourceFilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
             var result = await VerifyAndDecryptAsync(fileStream, key, signingConfig, detachedSignature);
-            
-            if (result.IsFailure) 
+
+            if (result.IsFailure)
                 await fileStream.DisposeAsync();
 
             return result;
@@ -308,10 +308,10 @@ public static class AudioEncryptor
     /// Verifies the authenticity of an encrypted stream and returns a decryption provider.
     /// Handles both embedded signatures (by masking the signature block with zeros) and detached signatures.
     /// </summary>
-    public static async Task<Result<ISoundDataProvider>> VerifyAndDecryptAsync(
-        Stream sourceStream, 
-        byte[] key, 
-        SignatureConfiguration signingConfig, 
+    public static async Task<Result<IDataProvider>> VerifyAndDecryptAsync(
+        Stream sourceStream,
+        byte[] key,
+        SignatureConfiguration signingConfig,
         string? detachedSignature = null)
     {
         if (!sourceStream.CanSeek)
@@ -320,12 +320,12 @@ public static class AudioEncryptor
         // 1. Read Header to find embedded signature info
         var headerStart = sourceStream.Position;
         var headerResult = SecureAudioContainer.ReadHeader(sourceStream);
-        
+
         if (headerResult.IsFailure)
-            return Result<ISoundDataProvider>.Fail(headerResult.Error!);
+            return Result<IDataProvider>.Fail(headerResult.Error!);
 
         var (format, iv, dataOffset, embeddedSigBytes, sigOffset) = headerResult.Value;
-        
+
         // 2. Determine which signature to use
         var signatureToVerify = detachedSignature;
         var isEmbedded = false;
@@ -355,16 +355,16 @@ public static class AudioEncryptor
             verifyResult = await FileAuthenticator.VerifyStreamAsync(sourceStream, signatureToVerify, signingConfig);
         }
 
-        if (verifyResult.IsFailure) 
-            return Result<ISoundDataProvider>.Fail(verifyResult.Error!);
-        
+        if (verifyResult.IsFailure)
+            return Result<IDataProvider>.Fail(verifyResult.Error!);
+
         if (!verifyResult.Value)
             return new ValidationError("Integrity check failed. Signature mismatch.");
 
         // 4. Setup Decryption
         // Reset stream to data start
         sourceStream.Seek(dataOffset, SeekOrigin.Begin);
-        
+
         var encryptionConfig = new EncryptionConfiguration { Key = key, Iv = iv };
         var cryptoStream = new DecryptionStream(sourceStream, encryptionConfig, dataOffset);
 
@@ -380,7 +380,7 @@ public static class AudioEncryptor
             }
         };
 
-        return Result<ISoundDataProvider>.Ok(provider);
+        return Result<IDataProvider>.Ok(provider);
     }
 
     /// <summary>

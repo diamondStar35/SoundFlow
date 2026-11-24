@@ -1,7 +1,9 @@
+using CaptureDevice = SoundFlow.Devices.CaptureDevice;
+using Device = SoundFlow.Devices.Device;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using SoundFlow.Devices;
 using SoundFlow.Enums;
 using SoundFlow.Utils;
 
@@ -14,7 +16,7 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Modifiers;
 /// </summary>
 public sealed class WebRtcApmModifier : SoundModifier, IDisposable
 {
-    private readonly AudioDevice _device;
+    private readonly Device _device;
     private AudioProcessingModule? _apm;
     private ApmConfig? _apmConfig;
     private readonly object _apmLock = new();
@@ -491,7 +493,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
     /// <param name="downmixMethod">Initial state for ProcessingPipeline.DownmixMethod.</param>
     /// <exception cref="ArgumentException">Thrown if the audio sample rate is not supported by WebRTC APM (8000, 16000, 32000, or 48000 Hz).</exception>
     public WebRtcApmModifier(
-        AudioDevice device,
+        Device device,
         bool aecEnabled = false, bool aecMobileMode = false, int aecLatencyMs = 40,
         bool nsEnabled = false, NoiseSuppressionLevel nsLevel = NoiseSuppressionLevel.High,
         bool agc1Enabled = false, GainControlMode agcMode = GainControlMode.AdaptiveDigital,
@@ -606,7 +608,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
                 if (EchoCancellation.Enabled)
                     switch (_device)
                     {
-                        case AudioCaptureDevice audioCaptureDevice:
+                        case CaptureDevice audioCaptureDevice:
                             audioCaptureDevice.OnAudioProcessed += HandleAudioEngineProcessedForAec;
                             break;
                         case FullDuplexDevice fullDuplexDevice:
@@ -897,7 +899,7 @@ public sealed class WebRtcApmModifier : SoundModifier, IDisposable
             if (disposing && _isApmSuccessfullyInitialized && EchoCancellation.Enabled)
                 switch (_device)
                 {
-                    case AudioCaptureDevice audioCaptureDevice:
+                    case CaptureDevice audioCaptureDevice:
                         audioCaptureDevice.OnAudioProcessed -= HandleAudioEngineProcessedForAec;
                         break;
                     case FullDuplexDevice fullDuplexDevice:

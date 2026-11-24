@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts.Devices;
+using Device = SoundFlow.Devices.Device;
+using SoundFlow.Devices;
 
 namespace SoundFlow.Structs.Events;
 
@@ -10,7 +11,7 @@ public class AudioFramesRenderedEventArgs : EventArgs
     /// <summary>
     /// Gets the audio device that rendered the frames.
     /// </summary>
-    public AudioDevice Device { get; internal set; }
+    public Device Device { get; internal set; }
 
     /// <summary>
     /// Gets the number of audio frames that were rendered.
@@ -20,7 +21,7 @@ public class AudioFramesRenderedEventArgs : EventArgs
     /// <summary>
     /// Initializes a new instance of the <see cref="AudioFramesRenderedEventArgs"/> class.
     /// </summary>
-    public AudioFramesRenderedEventArgs(AudioDevice device, int frameCount)
+    public AudioFramesRenderedEventArgs(Device device, int frameCount)
     {
         Device = device;
         FrameCount = frameCount;

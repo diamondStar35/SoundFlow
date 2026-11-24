@@ -1,7 +1,9 @@
+using CaptureDevice = SoundFlow.Devices.CaptureDevice;
+using Device = SoundFlow.Devices.Device;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using System.Collections.Concurrent;
-using SoundFlow.Abstracts.Devices;
+using SoundFlow.Devices;
 using SoundFlow.Metadata.Models;
 
 namespace SoundFlow.Providers;
@@ -9,9 +11,9 @@ namespace SoundFlow.Providers;
 /// <summary>
 /// Provides audio data from a microphone by subscribing to a specific capture device.
 /// </summary>
-public class MicrophoneDataProvider : ISoundDataProvider
+public class MicrophoneDataProvider : IDataProvider
 {
-    private readonly AudioDevice _captureDevice;
+    private readonly Device _captureDevice;
     private readonly ConcurrentQueue<float[]> _bufferQueue = new();
     private readonly int _bufferSize;
     private bool _isCapturing;
@@ -23,15 +25,15 @@ public class MicrophoneDataProvider : ISoundDataProvider
     /// </summary>
     /// <param name="captureDevice">The capture device to source audio from.</param>
     /// <param name="bufferSize">The size of internal audio buffers in samples.</param>
-    public MicrophoneDataProvider(AudioDevice captureDevice, int bufferSize = 8)
+    public MicrophoneDataProvider(Device captureDevice, int bufferSize = 8)
     {
         _captureDevice = captureDevice;
         _bufferSize = bufferSize;
         SampleRate = captureDevice.Format.SampleRate;
-        
+
         switch (captureDevice)
         {
-            case AudioCaptureDevice audioCaptureDevice:
+            case CaptureDevice audioCaptureDevice:
                 audioCaptureDevice.OnAudioProcessed += OnAudioDataReceived;
                 break;
             case FullDuplexDevice fullDuplexDevice:
@@ -57,7 +59,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
     public SoundFormatInfo? FormatInfo => null;
 
@@ -87,7 +89,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
         if (!_isCapturing) return;
 
         _isCapturing = false;
-        
+
         if (_currentBuffer != null && _currentBufferIndex > 0)
         {
             // Create a new array with the actual data length
@@ -137,7 +139,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
         var bytesCopied = 0;
@@ -183,7 +185,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
         _bufferQueue.Clear();
         switch (_captureDevice)
         {
-            case AudioCaptureDevice audioCaptureDevice:
+            case CaptureDevice audioCaptureDevice:
                 audioCaptureDevice.OnAudioProcessed -= OnAudioDataReceived;
                 break;
             case FullDuplexDevice fullDuplexDevice:

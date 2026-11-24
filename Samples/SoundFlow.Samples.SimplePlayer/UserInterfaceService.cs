@@ -1,4 +1,5 @@
-﻿using SoundFlow.Components;
+using SoundFlow.Playback;
+using SoundFlow.Components;
 using SoundFlow.Enums;
 
 namespace SoundFlow.Samples.SimplePlayer;
@@ -9,14 +10,14 @@ namespace SoundFlow.Samples.SimplePlayer;
 public static class UserInterfaceService
 {
     /// <summary>
-    /// Displays an interactive set of playback controls for an ISoundPlayer instance.
+    /// Displays an interactive set of playback controls for an IPlayer instance.
     /// </summary>
     /// <param name="player">The player to control.</param>
     public static void DisplayPlaybackControls(SoundPlayer player)
     {
         Console.WriteLine("\n--- Playback Controls ---");
         Console.WriteLine("'P': Play/Pause | 'S': Seek | 'V': Volume | '+/-': Speed | 'T': Switch Time Stretch Quality | 'R': Reset Speed | Any other: Stop");
-        
+
         using var timer = new System.Timers.Timer(500);
         timer.AutoReset = true;
         timer.Elapsed += (_, _) =>
@@ -40,10 +41,10 @@ public static class UserInterfaceService
             }
         };
         timer.Start();
-        
+
         var defaultQuality = WsolaPerformancePreset.Balanced;
         var currentQuality = defaultQuality;
-        
+
         while (player.State is PlaybackState.Playing or PlaybackState.Paused)
         {
             var keyInfo = Console.ReadKey(true);

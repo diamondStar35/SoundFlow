@@ -32,7 +32,7 @@ public sealed class Transport : IDisposable
     public int SamplePosition => _rawSamplePosition;
     private void ProviderEnded(object? sender, EventArgs args) => _providerEnded = true;
 
-    private readonly ISoundDataProvider _dataProvider;
+    private readonly IDataProvider _dataProvider;
     private float _currentFractionalFrame;
     private float[] _resampleBuffer;
     private int _resampleBufferValidSamples;
@@ -111,7 +111,7 @@ public sealed class Transport : IDisposable
     public PlaybackState State { get; internal set; }
 
     /// <summary>The leased input provider. Callers must not read or seek it concurrently with this transport.</summary>
-    public ISoundDataProvider DataProvider => _dataProvider;
+    public IDataProvider DataProvider => _dataProvider;
 
     private bool _isLooping;
     /// <summary>Whether reads wrap at the configured exclusive loop end. Enabling looping requires a seekable provider.</summary>
@@ -167,7 +167,7 @@ public sealed class Transport : IDisposable
     /// <param name="dataProvider">The sound data provider.</param>
     /// <param name="leaveOpen">Whether the caller retains ownership of the provider.</param>
     /// <exception cref="ArgumentNullException">Thrown if dataProvider is null.</exception>
-    public Transport(AudioFormat format, ISoundDataProvider dataProvider, bool leaveOpen = false)
+    public Transport(AudioFormat format, IDataProvider dataProvider, bool leaveOpen = false)
     {
         Format = format;
         _leaveOpen = leaveOpen;
@@ -769,13 +769,13 @@ public sealed class Transport : IDisposable
             _dataProvider.Seek(start); _providerEnded = false;
         }
         var count = end > 0 ? Math.Min(output.Length, end - _dataProvider.Position) : output.Length;
-        var read = _dataProvider.ReadBytes(output[..count]);
+        var read = _dataProvider.ReadSamples(output[..count]);
         if (read < 0 || read > count || read % Format.Channels != 0)
             throw new InvalidOperationException("A provider must return complete frames within its requested buffer.");
         if (read == 0 && IsLooping && _dataProvider.CanSeek && end > start && _dataProvider.Position > start)
         {
             _dataProvider.Seek(start); _providerEnded = false;
-            read = _dataProvider.ReadBytes(output[..Math.Min(output.Length, end - start)]);
+            read = _dataProvider.ReadSamples(output[..Math.Min(output.Length, end - start)]);
         }
         return read;
     }
@@ -806,7 +806,7 @@ public sealed class Transport : IDisposable
                 var read = 0;
                 while (read < capacity)
                 {
-                    var added = _dataProvider.ReadBytes(_reverseCache.AsSpan(read, capacity - read));
+                    var added = _dataProvider.ReadSamples(_reverseCache.AsSpan(read, capacity - read));
                     if (added == 0) break;
                     read += added;
                 }

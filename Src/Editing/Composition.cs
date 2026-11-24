@@ -1,3 +1,5 @@
+using SoundFlow.Providers;
+using Engine = SoundFlow.Engine;
 using System.Diagnostics.CodeAnalysis;
 using SoundFlow.Abstracts;
 using SoundFlow.Editing.Mapping;
@@ -17,7 +19,7 @@ namespace SoundFlow.Editing;
 public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 {
     private readonly Dictionary<Guid, IMidiMappable> _objectRegistry = new();
-    
+
     private string _name;
     private float _masterVolume = 1.0f;
     private int _sampleRate;
@@ -27,7 +29,7 @@ public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 
     /// <inheritdoc />
     public Guid Id { get; } = Guid.NewGuid();
-    
+
     /// <summary>
     /// Explicitly implements the ISequencerContext's read-only TempoTrack property.
     /// </summary>
@@ -35,7 +37,7 @@ public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 
     /// <summary>
     /// Gets the rendering service for this composition, which can generate audio output
-    /// and acts as an <see cref="ISoundDataProvider"/>.
+    /// and acts as an <see cref="IDataProvider"/>.
     /// </summary>
     public CompositionRenderer Renderer { get; }
 
@@ -131,7 +133,7 @@ public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 
     /// <summary>
     /// Gets or sets the target sample rate for rendering this composition.
-    /// This defines the output sample rate when the composition is rendered or read as an <see cref="ISoundDataProvider"/>.
+    /// This defines the output sample rate when the composition is rendered or read as an <see cref="IDataProvider"/>.
     /// </summary>
     public int SampleRate
     {
@@ -166,7 +168,7 @@ public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
 
     /// <summary>
     /// Gets or sets the target number of channels for rendering this composition.
-    /// This defines the output channel count when the composition is rendered or read as an <see cref="ISoundDataProvider"/>.
+    /// This defines the output channel count when the composition is rendered or read as an <see cref="IDataProvider"/>.
     /// </summary>
     public int TargetChannels
     {
@@ -188,7 +190,7 @@ public sealed class Composition : ISequencerContext, IDisposable, IMidiMappable
     /// <param name="name">The name of the composition. Defaults to "Composition".</param>
     /// <param name="targetChannels">Optional target number of channels for the composition's output. If null, uses the format's channel count.</param>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="targetChannels"/> is less than or equal to 0.</exception>
-    public Composition(AudioEngine engine, AudioFormat format, string name = "Composition", int? targetChannels = null)
+    public Composition(Engine engine, AudioFormat format, string name = "Composition", int? targetChannels = null)
     {
         Format = format;
         _name = name;

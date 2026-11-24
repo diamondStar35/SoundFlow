@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
@@ -19,7 +20,7 @@ namespace SoundFlow.Providers;
 ///     Note: Initialization is performed asynchronously. The provider may not be ready to produce data immediately
 ///     after the constructor returns. Methods will return 0 or default values until initialization is complete
 /// </remarks>
-public sealed class NetworkDataProvider : ISoundDataProvider
+public sealed class NetworkDataProvider : IDataProvider
 {
     private readonly HttpClient _httpClient;
     private volatile NetworkDataProviderBase? _actualProvider;
@@ -38,7 +39,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="url">The URL of the audio stream.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
-    public NetworkDataProvider(AudioEngine engine, string url, ReadOptions? options = null)
+    public NetworkDataProvider(Engine engine, string url, ReadOptions? options = null)
     {
         _httpClient = new HttpClient();
         SampleRate = 0; // Will be determined during initialization
@@ -53,7 +54,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     /// <param name="format">The audio format containing channels and sample rate and sample format.</param>
     /// <param name="url">The URL of the audio stream.</param>
     /// <param name="hlsSegmentFormatId">For HLS streams, the format identifier (e.g., "aac", "mp3") of the individual segments. This is ignored for direct streams.</param>
-    public NetworkDataProvider(AudioEngine engine, AudioFormat format, string url, string? hlsSegmentFormatId = null)
+    public NetworkDataProvider(Engine engine, AudioFormat format, string url, string? hlsSegmentFormatId = null)
     {
         _httpClient = new HttpClient();
         SampleRate = format.SampleRate;
@@ -77,7 +78,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
     public SoundFormatInfo? FormatInfo => _actualProvider?.FormatInfo;
 
@@ -87,7 +88,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
-    private async Task InitializeInternalAsync(AudioEngine engine, AudioFormat? format, string? hlsSegmentFormatId, string url, ReadOptions? options)
+    private async Task InitializeInternalAsync(Engine engine, AudioFormat? format, string? hlsSegmentFormatId, string url, ReadOptions? options)
     {
         try
         {
@@ -98,11 +99,11 @@ public sealed class NetworkDataProvider : ISoundDataProvider
                 : new DirectStreamProvider(engine, format, url, _httpClient, options);
 
             await provider.InitializeAsync();
-            
+
             // Wire up events from the internal provider to this facade's events
             provider.EndOfStreamReached += (_, e) => EndOfStreamReached?.Invoke(this, e);
             provider.PositionChanged += (_, e) => PositionChanged?.Invoke(this, e);
-            
+
             // Update the public sample rate after initialization
             SampleRate = provider.SampleRate;
 
@@ -120,10 +121,10 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
-        
+
         // Return 0 if the provider isn't ready yet, or initialization failed, to supply silence until the stream is ready.
         if (_actualProvider == null)
         {
@@ -133,8 +134,8 @@ public sealed class NetworkDataProvider : ISoundDataProvider
             }
             return 0;
         }
-        
-        return _actualProvider.ReadBytes(buffer);
+
+        return _actualProvider.ReadSamples(buffer);
     }
 
     /// <inheritdoc />
@@ -147,18 +148,18 @@ public sealed class NetworkDataProvider : ISoundDataProvider
         else // If called before initialization, seeking is not yet supported.
             throw new InvalidOperationException("Cannot seek: The stream is not yet initialized.");
     }
-    
+
     /// <inheritdoc />
     public void Dispose()
     {
         if (IsDisposed) return;
-        
+
         IsDisposed = true;
         _actualProvider?.Dispose();
         _httpClient.Dispose();
         GC.SuppressFinalize(this);
     }
-    
+
     private static async Task<bool> IsHlsUrlAsync(string url)
     {
         try
@@ -188,7 +189,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
             return false;
         }
     }
-    
+
     private static async Task<string?> DownloadPartialContentAsync(HttpClient client, string url, int byteCount)
     {
         try
@@ -196,14 +197,14 @@ public sealed class NetworkDataProvider : ISoundDataProvider
             var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Range = new RangeHeaderValue(0, byteCount - 1);
             var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-            
+
             // If the server doesn't support partial content or playlist file is too small, retry with the full content
             if (response.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
             {
                 request = new HttpRequestMessage(HttpMethod.Get, url);
                 response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
             }
-            
+
             response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync();
@@ -221,10 +222,10 @@ public sealed class NetworkDataProvider : ISoundDataProvider
 /// <summary>
 ///     Internal abstract base class for network providers.
 /// </summary>
-internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat? format, string url, HttpClient client)
-    : ISoundDataProvider
+internal abstract class NetworkDataProviderBase(Engine engine, AudioFormat? format, string url, HttpClient client)
+    : IDataProvider
 {
-    protected readonly AudioEngine Engine = engine;
+    protected readonly Engine Engine = engine;
     protected AudioFormat? UserProvidedFormat = format;
     protected readonly string Url = url;
     protected readonly HttpClient HttpClient = client;
@@ -232,10 +233,10 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat?
     protected int SamplePosition;
 
     public abstract Task InitializeAsync();
-    
-    public abstract int ReadBytes(Span<float> buffer);
+
+    public abstract int ReadSamples(Span<float> buffer);
     public abstract void Seek(int sampleOffset);
-    
+
     public int Position => SamplePosition;
     public int Length { get; protected set; }
     public bool CanSeek { get; protected set; }
@@ -261,7 +262,7 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat?
 ///     Handles direct audio streams (e.g., MP3, WAV, OGG files).
 ///     Uses a background buffering strategy for large files to prevent network issues from crashing the audio thread.
 /// </summary>
-internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? format, string url, HttpClient client, ReadOptions? readOptions)
+internal sealed class DirectStreamProvider(Engine engine, AudioFormat? format, string url, HttpClient client, ReadOptions? readOptions)
     : NetworkDataProviderBase(engine, format, url, client)
 {
     private ISoundDecoder? _decoder;
@@ -334,10 +335,10 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
         CanSeek = _stream.CanSeek;
     }
 
-    public override int ReadBytes(Span<float> buffer)
+    public override int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed || _decoder == null) return 0;
-        
+
         var samplesRead = _decoder.Decode(buffer);
         if (samplesRead == 0)
         {
@@ -383,7 +384,7 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
 /// <summary>
 ///     Handles HLS (HTTP Live Streaming) playlists (m3u8).
 /// </summary>
-internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format, string? segmentFormatId, string url, HttpClient client)
+internal sealed class HlsStreamProvider(Engine engine, AudioFormat? format, string? segmentFormatId, string url, HttpClient client)
     : NetworkDataProviderBase(engine, format, url, client)
 {
     private class HlsSegment
@@ -391,7 +392,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         public string Uri { get; init; } = string.Empty;
         public double Duration { get; init; }
     }
-    
+
     private readonly Queue<float> _audioBuffer = new();
     private bool _isEndOfStream;
     private CancellationTokenSource? _cancellationTokenSource;
@@ -410,7 +411,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
 
         if (_hlsSegments.Count == 0)
             throw new InvalidOperationException("No segments found in HLS playlist.");
-        
+
         await DetermineSegmentFormatAsync(_cancellationTokenSource.Token);
         SampleFormat = SampleFormat.F32; // Decoded HLS is typically float
         SampleRate = UserProvidedFormat!.Value.SampleRate;
@@ -420,33 +421,33 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         // Start background buffering
         _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
     }
-    
-    
+
+
     private async Task DetermineSegmentFormatAsync(CancellationToken cancellationToken)
     {
         var firstSegmentUrl = _hlsSegments[0].Uri;
-        
+
         // Download just the first few KB of the first segment to identify it.
         var request = new HttpRequestMessage(HttpMethod.Get, firstSegmentUrl);
         request.Headers.Range = new RangeHeaderValue(0, 8192); // 8 KB is plenty for any audio header.
-        
+
         using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         await using var segmentHeaderStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        
+
         // The metadata reader needs a seekable stream.
         var memoryStream = new MemoryStream();
         await segmentHeaderStream.CopyToAsync(memoryStream, cancellationToken);
         memoryStream.Position = 0;
 
         using var decoder = Engine.CreateDecoder(memoryStream, out var detectedFormat, UserProvidedFormat);
-        
+
         _segmentFormatId = "unknown_probed"; // The actual format ID is not crucial, as the decoder succeeded.
         UserProvidedFormat = detectedFormat;
     }
-    
-    public override int ReadBytes(Span<float> buffer)
+
+    public override int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
 
@@ -475,7 +476,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
                 }
             }
         }
-        
+
         if (samplesRead > 0)
         {
             lock (Lock)
@@ -484,10 +485,10 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
                 OnPositionChanged(SamplePosition);
             }
         }
-    
+
         return samplesRead;
     }
-    
+
     public override void Seek(int sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
@@ -502,30 +503,30 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         {
             if (cumulativeTime + segment.Duration >= targetTime)
                 break;
-            
+
             cumulativeTime += segment.Duration;
             newSegmentIndex++;
         }
 
         if (newSegmentIndex >= _hlsSegments.Count)
             newSegmentIndex = _hlsSegments.Count > 0 ? _hlsSegments.Count - 1 : 0;
-        
+
         lock (Lock)
         {
             _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new CancellationTokenSource();
-            
+
             _audioBuffer.Clear();
             _isEndOfStream = false;
             SamplePosition = sampleOffset;
             _currentSegmentIndex = newSegmentIndex;
-            
+
             _ = BufferHlsStreamAsync(_cancellationTokenSource.Token);
             OnPositionChanged(SamplePosition);
         }
     }
-    
+
     private async Task BufferHlsStreamAsync(CancellationToken cancellationToken)
     {
         try
@@ -550,7 +551,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
                         _isEndOfStream = true;
                         Monitor.PulseAll(Lock);
                     }
-                    break; 
+                    break;
                 }
                 else
                 {
@@ -568,14 +569,14 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
             }
         }
     }
-    
+
     private bool ShouldRefreshPlaylist()
     {
         if (_isEndList) return false;
         var timeUntilEnd = _hlsSegments.Skip(_currentSegmentIndex).Sum(s => s.Duration);
         return timeUntilEnd < _hlsTargetDuration * 1.5; // Refresh if we have less than 1.5 segments left
     }
-    
+
     private async Task DownloadAndBufferSegmentAsync(HlsSegment segment, CancellationToken cancellationToken)
     {
         using var response = await HttpClient.GetAsync(segment.Uri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
@@ -605,13 +606,13 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
             ArrayPool<float>.Shared.Return(buffer);
         }
     }
-    
+
     private async Task DownloadAndParsePlaylistAsync(string playlistUrl, CancellationToken cancellationToken)
     {
         var response = await HttpClient.GetAsync(playlistUrl, cancellationToken);
         response.EnsureSuccessStatusCode();
         var content = await response.Content.ReadAsStringAsync(cancellationToken);
-        
+
         lock (Lock)
         {
             ParseHlsPlaylist(content, playlistUrl);
@@ -623,7 +624,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         var lines = playlistContent.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         var newSegments = new List<HlsSegment>();
         var newTotalDuration = 0.0;
-        
+
         double segmentDuration = 0;
 
         foreach (var line in lines)
@@ -670,12 +671,12 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
             _hlsTotalDuration = newTotalDuration;
         }
     }
-    
+
     private static string CombineUri(string baseUri, string relativeUri)
     {
         return Uri.TryCreate(new Uri(baseUri), relativeUri, out var newUri) ? newUri.ToString() : relativeUri;
     }
-    
+
     public override void Dispose()
     {
         if (IsDisposed) return;
@@ -708,7 +709,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
     private CancellationTokenSource? _cts;
     private Task? _producerTask;
     private bool _isDisposed;
-    
+
     /// <summary>
     /// Starts the background producer task that reads from the network response and fills the buffer.
     /// This method takes ownership of the HttpResponseMessage.
@@ -727,7 +728,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
                 {
                     var bytesRead = await sourceStream.ReadAsync(tempBuffer, _cts.Token);
                     if (bytesRead == 0) break; // End of network stream
-                    
+
                     Write(tempBuffer, 0, bytesRead);
                 }
 
@@ -758,7 +759,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
             if (_bytesAvailable == 0) return 0; // End of stream or failure
 
             var bytesToRead = Math.Min(count, _bytesAvailable);
-            
+
             // Read from circular buffer
             var firstChunkSize = Math.Min(bytesToRead, _buffer.Length - _readPosition);
             Buffer.BlockCopy(_buffer, _readPosition, buffer, offset, firstChunkSize);
@@ -770,7 +771,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
                 Buffer.BlockCopy(_buffer, _readPosition, buffer, offset + firstChunkSize, secondChunkSize);
                 _readPosition = (_readPosition + secondChunkSize) % _buffer.Length;
             }
-            
+
             _bytesAvailable -= bytesToRead;
             Monitor.PulseAll(_lock); // Signal producer that space is available
             return bytesToRead;
@@ -787,7 +788,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
             {
                 Monitor.Wait(_lock);
             }
-            
+
             if (_isDisposed) return;
 
             // Write to circular buffer
@@ -824,7 +825,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
             Monitor.PulseAll(_lock); // Wake any waiting readers to signal EOS
         }
     }
-    
+
     protected override void Dispose(bool disposing)
     {
         if (_isDisposed) return;
@@ -843,7 +844,7 @@ internal sealed class BufferedNetworkStream(int bufferSize = 1 * 1024 * 1024) : 
 
         base.Dispose(disposing);
     }
-    
+
     #region Not Supported Stream Members
     public override bool CanRead => !_isDisposed;
     public override bool CanSeek => false;

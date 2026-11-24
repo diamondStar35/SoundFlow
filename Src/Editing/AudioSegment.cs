@@ -1,3 +1,4 @@
+using SoundFlow.Providers;
 using System.Buffers;
 using SoundFlow.Components;
 using SoundFlow.Interfaces;
@@ -16,7 +17,7 @@ public class AudioSegment : IDisposable
     private int _reversedBufferCacheSourceLoopPass = -1;
 
     private string _name;
-    private ISoundDataProvider _sourceDataProvider;
+    private IDataProvider _sourceDataProvider;
     private TimeSpan _sourceStartTime;
     private TimeSpan _sourceDuration;
     private TimeSpan _timelineStartTime;
@@ -63,7 +64,7 @@ public class AudioSegment : IDisposable
     /// Gets the sound data provider that serves as the source for this audio segment.
     /// This property is set during construction and can be replaced via <see cref="ReplaceSource"/>.
     /// </summary>
-    public ISoundDataProvider SourceDataProvider
+    public IDataProvider SourceDataProvider
     {
         get => _sourceDataProvider;
         private set => _sourceDataProvider = value;
@@ -152,10 +153,10 @@ public class AudioSegment : IDisposable
             }
 
             _timeStretchConfig = value;
-            
+
             // Re-initialize buffers to accommodate potentially larger window sizes
             InitializeWsolaBuffers();
-            
+
             // Reconfigure or recreate the stretcher
             FullResetState();
             MarkDirty();
@@ -192,7 +193,7 @@ public class AudioSegment : IDisposable
     /// </exception>
     public AudioSegment(
         AudioFormat format,
-        ISoundDataProvider sourceDataProvider,
+        IDataProvider sourceDataProvider,
         TimeSpan sourceStartTime,
         TimeSpan sourceDuration,
         TimeSpan timelineStartTime,
@@ -209,7 +210,7 @@ public class AudioSegment : IDisposable
         _ownsDataProvider = ownsDataProvider;
         _settings = settings ?? new AudioSegmentSettings();
         _settings.ParentSegment = this;
-        
+
         // Default to Fast preset
         _timeStretchConfig = WsolaConfig.FromPreset(WsolaPerformancePreset.Fast);
 
@@ -231,13 +232,13 @@ public class AudioSegment : IDisposable
         // Size buffers based on the current configuration to ensure they are large enough.
         // x8 factor provides a safe margin for processing multiple hops.
         var baseBufferSizeFrames = _timeStretchConfig.WindowSizeFrames * 8;
-        
+
         var requiredSize = baseBufferSizeFrames * channels;
         if (_wsolaFeedBuffer.Length < requiredSize || _wsolaFeedBuffer.Length > requiredSize * 2)
         {
             _wsolaFeedBuffer = new float[requiredSize];
         }
-        
+
         if (_wsolaOutputBuffer.Length < requiredSize * 3 || _wsolaOutputBuffer.Length > requiredSize * 6)
         {
             _wsolaOutputBuffer = new float[requiredSize * 3];
@@ -310,7 +311,7 @@ public class AudioSegment : IDisposable
         _reversedBufferCache = null;
         _reversedBufferCacheSourceLoopPass = -1;
         _segmentWsolaStretcher?.Reset();
-        
+
         // Clear WSOLA internal buffers.
         _wsolaFeedBufferValidSamples = 0;
         _wsolaFeedBufferReadOffset = 0;
@@ -382,7 +383,7 @@ public class AudioSegment : IDisposable
         var clone = new AudioSegment(Format, SourceDataProvider,
             SourceStartTime, SourceDuration, newTimelineStartTime ?? TimelineStartTime, $"{Name} (Clone)",
             Settings.Clone());
-        
+
         clone.TimeStretchConfig = this.TimeStretchConfig;
         return clone;
     }
@@ -395,7 +396,7 @@ public class AudioSegment : IDisposable
     /// <param name="newSourceStartTime">The new starting time offset within the new source data.</param>
     /// <param name="newSourceDuration">The new duration of the audio to read from the new source data.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="newSource"/> is null.</exception>
-    internal void ReplaceSource(ISoundDataProvider newSource, TimeSpan newSourceStartTime, TimeSpan newSourceDuration)
+    internal void ReplaceSource(IDataProvider newSource, TimeSpan newSourceStartTime, TimeSpan newSourceDuration)
     {
         // Dispose old owned provider if necessary
         if (_ownsDataProvider && !SourceDataProvider.IsDisposed)
@@ -445,7 +446,7 @@ public class AudioSegment : IDisposable
             if (outputBufferOffset < outputBuffer.Length) outputBuffer.Slice(outputBufferOffset).Clear();
             return 0;
         }
-        
+
         // Reset WSOLA state if transitioning to a new source loop pass.
         if (currentSegmentLoopPass != _currentSourcePassBeingFedToWsola && _segmentWsolaStretcher != null)
         {
@@ -532,24 +533,24 @@ public class AudioSegment : IDisposable
                 // Apply Modifiers
                 foreach (var modifier in Settings.Modifiers)
                     modifier.Process(processingFrameSpan, targetChannels);
-                
+
                 // Apply Analyzers
                 foreach (var analyzer in Settings.Analyzers)
                     analyzer.Process(processingFrameSpan, targetChannels);
 
                 // Calculate current time within the effective timeline instance for fade and other time-dependent effects.
-                var timeIntoCurrentEffectiveLoopInstance = MapStretchedOffsetToEffectiveTimelineOffset(timeOffsetWithinCurrentStretchedPass, Settings.SpeedFactor) 
+                var timeIntoCurrentEffectiveLoopInstance = MapStretchedOffsetToEffectiveTimelineOffset(timeOffsetWithinCurrentStretchedPass, Settings.SpeedFactor)
                                                            + TimeSpan.FromSeconds((double)frameIndex / targetSampleRate);
 
                 for (var ch = 0; ch < targetChannels; ch++)
                 {
                     var sample = processingFrameSpan[ch];
                     var fadeMultiplier = 1.0f;
-                    
+
                     // Apply Fade In
                     if (Settings.FadeInDuration > TimeSpan.Zero && timeIntoCurrentEffectiveLoopInstance < Settings.FadeInDuration)
                         fadeMultiplier *= GetFadeMultiplier(timeIntoCurrentEffectiveLoopInstance.TotalSeconds / Settings.FadeInDuration.TotalSeconds, Settings.FadeInCurve, false);
-                    
+
                     // Apply Fade Out
                     if (Settings.FadeOutDuration > TimeSpan.Zero && timeIntoCurrentEffectiveLoopInstance > singleEffectiveInstanceDurationOnTimeline - Settings.FadeOutDuration)
                     {
@@ -618,7 +619,7 @@ public class AudioSegment : IDisposable
         if (samplesNeededForRequest <= 0) return 0;
 
         var samplesFilledForRequest = 0;
-        
+
         // Calculate target start sample within the stretched segment loop.
         var targetStartSampleInStretchedStreamThisSegmentLoop = (long)(timeOffsetInCurrentStretchedPass.TotalSeconds * sampleRate * channels);
 
@@ -644,7 +645,7 @@ public class AudioSegment : IDisposable
                 {
                     if (samplesFilledForRequest < outputBuffer.Length)
                         outputBuffer.Slice(samplesFilledForRequest).Clear();
-                    
+
                     return samplesFilledForRequest;
                 }
 
@@ -659,7 +660,7 @@ public class AudioSegment : IDisposable
                     // If no samples were skipped despite still needing to skip, means no more data.
                     if (samplesFilledForRequest < outputBuffer.Length)
                         outputBuffer.Slice(samplesFilledForRequest).Clear();
-                    
+
                     return samplesFilledForRequest;
                 }
             }
@@ -685,7 +686,7 @@ public class AudioSegment : IDisposable
                 {
                     if (samplesFilledForRequest < outputBuffer.Length)
                         outputBuffer.Slice(samplesFilledForRequest).Clear();
-                    
+
                     break;
                 }
             }
@@ -728,9 +729,9 @@ public class AudioSegment : IDisposable
 
         var sourceSamplesInOneSourcePass = (long)(SourceDuration.TotalSeconds * sampleRate * channels);
         if (sourceSamplesInOneSourcePass <= 0) return false;
-        
+
         var initialWsolaOutputCountThisCall = _wsolaOutputBufferValidSamples;
-        
+
         // Loop until enough output is generated or source runs out.
         while (_wsolaOutputBufferValidSamples - _wsolaOutputBufferReadOffset < _timeStretchConfig.WindowSizeFrames * channels)
         {
@@ -751,7 +752,7 @@ public class AudioSegment : IDisposable
             }
 
             CompactWsolaFeedBuffer();
-            
+
             // If feed buffer needs more data.
             if (_wsolaFeedBufferValidSamples < _segmentWsolaStretcher.MinInputSamplesToProcess)
             {
@@ -788,7 +789,7 @@ public class AudioSegment : IDisposable
             if (inputForWsolaSpan.IsEmpty && (!IsSegmentLoopEffectivelyInfinite(_currentSourcePassBeingFedToWsola) || endOfCurrentSourcePassFeed)) break;
 
             // Handle flushing WSOLA if nearing the end of the source and not looping infinitely.
-            if (endOfCurrentSourcePassFeed && 
+            if (endOfCurrentSourcePassFeed &&
                 inputForWsolaSpan.Length < _segmentWsolaStretcher.MinInputSamplesToProcess &&
                 !IsSegmentLoopEffectivelyInfinite(_currentSourcePassBeingFedToWsola))
             {
@@ -856,7 +857,7 @@ public class AudioSegment : IDisposable
     /// <param name="currentSegmentLoopPassContext">Current pass number of the source loop. Used for caching reversed data.</param>
     /// <param name="isFeedingWsola">Whether the read samples are being fed to the WSOLA time stretcher. Affects loop pass tracking.</param>
     /// <returns>The number of samples written to the output buffer.</returns>
-    private int ReadAndReverseSourceSamples(TimeSpan timeOffsetInCurrentSourcePass, TimeSpan durationToRead, Span<float> outputBuffer, 
+    private int ReadAndReverseSourceSamples(TimeSpan timeOffsetInCurrentSourcePass, TimeSpan durationToRead, Span<float> outputBuffer,
         int sampleRate, int channels, int currentSegmentLoopPassContext, bool isFeedingWsola = false)
     {
         var samplesToReadTotal = (int)(durationToRead.TotalSeconds * sampleRate * channels);
@@ -868,7 +869,7 @@ public class AudioSegment : IDisposable
 
         // Calculate the current sample offset within the source pass for the current read request.
         var currentEffectiveSampleOffsetInSourcePass = (long)(timeOffsetInCurrentSourcePass.TotalSeconds * sampleRate * channels);
-        
+
         // Reversed path (Handles reading from a pre-reversed cache)
         if (Settings.IsReversed)
         {
@@ -889,7 +890,7 @@ public class AudioSegment : IDisposable
                     while (cachedSamples < singlePassSourceSamples)
                     {
                         var toReadNow = Math.Min((int)singlePassSourceSamples - cachedSamples, tempChunk.Length);
-                        var r = SourceDataProvider.ReadBytes(tempChunk.AsSpan(0, toReadNow));
+                        var r = SourceDataProvider.ReadSamples(tempChunk.AsSpan(0, toReadNow));
                         if (r == 0) break; // End of underlying stream
                         tempChunk.AsSpan(0, r).CopyTo(_reversedBufferCache.AsSpan(cachedSamples));
                         cachedSamples += r;
@@ -919,7 +920,7 @@ public class AudioSegment : IDisposable
                     .CopyTo(outputBuffer.Slice(0, toCopyFromReversed));
                 samplesWrittenToOutput = toCopyFromReversed;
             }
-            
+
             // Clear any remaining portion of the output buffer if not fully filled
             if (samplesWrittenToOutput < outputBuffer.Length)
                 outputBuffer.Slice(samplesWrittenToOutput).Clear();
@@ -929,7 +930,7 @@ public class AudioSegment : IDisposable
 
         // Forward path
         var sourceStartSamples = (long)(SourceStartTime.TotalSeconds * sampleRate * channels);
-        
+
         // Calculate the absolute physical position in the underlying data provider
         var physicalProviderTargetReadPos = sourceStartSamples + currentEffectiveSampleOffsetInSourcePass;
         var positionDelta = Math.Abs(SourceDataProvider.Position - physicalProviderTargetReadPos);
@@ -940,9 +941,9 @@ public class AudioSegment : IDisposable
             if (SourceDataProvider.CanSeek)
             {
                 var providerLength = SourceDataProvider.Length;
-                if (providerLength > 0) 
+                if (providerLength > 0)
                     physicalProviderTargetReadPos = Math.Min(physicalProviderTargetReadPos, providerLength);
-        
+
                 SourceDataProvider.Seek((int)physicalProviderTargetReadPos);
             }
             _isReadStateInvalid = false;
@@ -957,12 +958,12 @@ public class AudioSegment : IDisposable
             outputBuffer.Clear();
             return 0;
         }
-        
+
         // Perform the read
-        var readCount = SourceDataProvider.ReadBytes(outputBuffer.Slice(0, samplesToReadThisIteration));
+        var readCount = SourceDataProvider.ReadSamples(outputBuffer.Slice(0, samplesToReadThisIteration));
 
         // Clear the rest of the buffer if we didn't fill it (because we hit the end of the stream)
-        if (readCount < samplesToReadThisIteration) 
+        if (readCount < samplesToReadThisIteration)
             outputBuffer.Slice(readCount, samplesToReadThisIteration - readCount).Clear();
 
         // Return the number of samples actually placed in the buffer
@@ -1096,7 +1097,7 @@ public class AudioSegment : IDisposable
     {
         if (_ownsDataProvider && !SourceDataProvider.IsDisposed)
             SourceDataProvider.Dispose();
-        
+
         _segmentWsolaStretcher = null;
         if (_reversedBufferCache != null)
         {

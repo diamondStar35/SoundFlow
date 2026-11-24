@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Providers;
 using SoundFlow.Structs;
 using SoundFlow.Synthesis;
@@ -17,7 +17,7 @@ if (!File.Exists(midiFilePath) || !File.Exists(soundFontPath))
 }
 
 // 1. Standard engine and device setup
-using var engine = new MiniAudioEngine();
+using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 var format = AudioFormat.Cd;
 using var device = engine.InitializePlaybackDevice(engine.PlaybackDevices.FirstOrDefault(x => x.IsDefault), format);
 

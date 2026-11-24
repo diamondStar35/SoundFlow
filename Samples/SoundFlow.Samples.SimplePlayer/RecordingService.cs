@@ -1,5 +1,7 @@
-﻿using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using DeviceConfiguration = SoundFlow.Devices.DeviceConfiguration;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
+using SoundFlow.Devices;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Structs;
@@ -15,14 +17,14 @@ public static class RecordingService
     /// Manages a complete recording session, including device selection, recording controls,
     /// and an option to play back the recorded file.
     /// </summary>
-    public static void RecordAndPlayback(AudioEngine engine, AudioFormat format, DeviceConfig deviceConfig, string outputFilePath)
+    public static void RecordAndPlayback(Engine engine, AudioFormat format, DeviceConfiguration deviceConfig, string outputFilePath)
     {
         var captureDeviceInfo = DeviceService.SelectDevice(engine, DeviceType.Capture);
         if (!captureDeviceInfo.HasValue) return;
 
         using var captureDevice = engine.InitializeCaptureDevice(captureDeviceInfo.Value, format, deviceConfig);
         captureDevice.Start();
-        
+
         // The stream must be disposed manually after the recorder is done with it.
         var stream = new FileStream(outputFilePath, FileMode.Create, FileAccess.Write, FileShare.Read);
         try
@@ -63,7 +65,7 @@ public static class RecordingService
         Console.WriteLine($"\nRecording finished. File saved to: {outputFilePath}");
         Console.WriteLine("Press 'p' to play back or any other key to skip.");
         if (Console.ReadKey(true).Key != ConsoleKey.P) return;
-        
+
         PlaybackService.PlayFile(engine, format, deviceConfig, outputFilePath);
     }
 }

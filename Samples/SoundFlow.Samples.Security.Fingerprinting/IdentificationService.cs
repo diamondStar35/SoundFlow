@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
 using SoundFlow.Security.Models;
@@ -18,7 +19,7 @@ public static class IdentificationService
     /// <param name="engine">The audio engine for decoding.</param>
     /// <param name="store">The fingerprint store to query against.</param>
     /// <returns>The result of the identification process.</returns>
-    public static async Task<FingerprintResult?> IdentifyClipAsync(string filePath, AudioEngine engine, IFingerprintStore store)
+    public static async Task<FingerprintResult?> IdentifyClipAsync(string filePath, Engine engine, IFingerprintStore store)
     {
         Console.WriteLine($"--- Identifying Clip: {filePath} ---");
 

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -20,4 +20,5 @@
       </None>
     </ItemGroup>
 
+  <ItemGroup><ProjectReference Include="../../Backends/SoundFlow.Backends.MiniAudio/SoundFlow.Backends.MiniAudio.csproj" /></ItemGroup>
 </Project>

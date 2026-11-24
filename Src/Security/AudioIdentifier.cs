@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+using SoundFlow.Providers;
+using System.Diagnostics;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Security.Analyzers;
@@ -21,10 +22,10 @@ public static class AudioIdentifier
     /// <param name="provider">The audio data provider.</param>
     /// <param name="config">Optional configuration.</param>
     /// <returns>A generated <see cref="AudioFingerprint"/>.</returns>
-    public static AudioFingerprint GenerateFingerprint(ISoundDataProvider provider, FingerprintConfiguration? config = null)
+    public static AudioFingerprint GenerateFingerprint(IDataProvider provider, FingerprintConfiguration? config = null)
     {
         config ??= new FingerprintConfiguration();
-        
+
         var analyzer = new ContentFingerprintAnalyzer(
             new AudioFormat
             {
@@ -32,20 +33,20 @@ public static class AudioIdentifier
                 Channels = provider.FormatInfo?.ChannelCount ?? 2,
                 Format = SampleFormat.F32,
                 Layout = AudioFormat.GetLayoutFromChannels(provider.FormatInfo?.ChannelCount ?? 2)
-            }, 
+            },
             config);
 
         // Process audio in blocks
         const int blockSize = 4096;
         var buffer = new float[blockSize];
-        
+
         if (provider.CanSeek) provider.Seek(0);
 
         while (true)
         {
-            var read = provider.ReadBytes(buffer);
+            var read = provider.ReadSamples(buffer);
             if (read == 0) break;
-            
+
             analyzer.Process(buffer.AsSpan(0, read), provider.FormatInfo?.ChannelCount ?? 2);
         }
 
@@ -67,15 +68,15 @@ public static class AudioIdentifier
     /// <param name="store">The fingerprint store to search.</param>
     /// <param name="config">Optional configuration.</param>
     /// <returns>A <see cref="FingerprintResult"/> detailing the match.</returns>
-    public static async Task<Result<FingerprintResult>> IdentifyAsync(ISoundDataProvider provider, IFingerprintStore store, FingerprintConfiguration? config = null)
+    public static async Task<Result<FingerprintResult>> IdentifyAsync(IDataProvider provider, IFingerprintStore store, FingerprintConfiguration? config = null)
     {
         var sw = Stopwatch.StartNew();
         config ??= new FingerprintConfiguration();
-        
+
         // 1. Generate Fingerprint for Query
         var queryFingerprint = GenerateFingerprint(provider, config);
         var queryTotalHashes = queryFingerprint.Hashes.Count;
-        
+
         if (queryTotalHashes == 0)
         {
             return Result<FingerprintResult>.Fail(new NotFoundError("Fingerprint", "No hashes found in query audio."));
@@ -89,7 +90,7 @@ public static class AudioIdentifier
         foreach (var queryHash in queryFingerprint.Hashes)
         {
             var matches = await store.QueryHashAsync(queryHash.Hash);
-            
+
             foreach (var match in matches)
             {
                 if (!timeDeltaHistograms.TryGetValue(match.TrackId, out var histogram))
@@ -117,9 +118,9 @@ public static class AudioIdentifier
         {
             foreach (var bin in histogram)
             {
-                if (bin.Value <= bestScore) 
+                if (bin.Value <= bestScore)
                     continue;
-                
+
                 bestScore = bin.Value;
                 bestTrackId = trackId;
                 bestDelta = bin.Key;

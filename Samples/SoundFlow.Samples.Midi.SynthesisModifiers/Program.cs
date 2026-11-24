@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Midi.Modifier;
 using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
@@ -9,7 +9,7 @@ using SoundFlow.Synthesis.Banks;
 Console.WriteLine("Initializing Audio Engine...");
 
 // 1. Standard Audio Setup
-using var engine = new MiniAudioEngine();
+using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 using var output = engine.InitializePlaybackDevice(null, AudioFormat.DvdHq);
 output.Start();
 

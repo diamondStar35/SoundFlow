@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Samples.Security.Authentication;
+namespace SoundFlow.Samples.Security.Authentication;
 
 /// <summary>
 /// Provides methods to simulate file tampering for verification testing.

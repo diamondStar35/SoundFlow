@@ -1,4 +1,4 @@
-﻿using SoundFlow.Security;
+using SoundFlow.Security;
 using SoundFlow.Security.Configuration;
 
 namespace SoundFlow.Samples.Security.Authentication;

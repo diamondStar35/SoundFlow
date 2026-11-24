@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using SoundFlow.Abstracts;
 using SoundFlow.Structs;
 
@@ -13,7 +14,7 @@ public class LowFrequencyOscillator : SoundComponent
     /// </summary>
     /// <param name="engine">The parent audio engine.</param>
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
-    public LowFrequencyOscillator(AudioEngine engine, AudioFormat format) : base(engine, format) { }
+    public LowFrequencyOscillator(Engine engine, AudioFormat format) : base(engine, format) { }
 
     /// <inheritdoc/>
     public override string Name { get; set; } = "LFO";

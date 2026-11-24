@@ -1,3 +1,6 @@
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Devices;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
@@ -12,7 +15,7 @@ namespace SoundFlow.Samples.SimplePlayer;
 
 internal static class ComponentTests
 {
-    private static readonly AudioEngine Engine = new MiniAudioEngine();
+    private static readonly CoreEngine Engine = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
 
     public static void Run()
@@ -21,7 +24,7 @@ internal static class ComponentTests
         {
             Console.WriteLine("SoundFlow Component and Modifier Examples");
             Console.WriteLine($"Using Audio Backend: {Engine.GetType().Name}");
-            
+
             // Component Examples:
             Console.WriteLine("\n--- Component Examples ---");
             TestOscillator();
@@ -49,8 +52,8 @@ internal static class ComponentTests
             TestMultiChannelChorusModifier();
             TestParametricEqualizerModifier();
             TestTrebleBoosterModifier();
-            
-            
+
+
             // Provider Examples:
             Console.WriteLine("\n--- Provider Examples ---");
             TestAssetDataProvider();
@@ -58,7 +61,7 @@ internal static class ComponentTests
             TestStreamDataProvider();
             TestRawDataProvider();
             TestQueueDataProvider();
-            
+
             TestNetworkDataProvider().GetAwaiter().GetResult();
             TestMicrophoneDataProvider();
 
@@ -543,12 +546,12 @@ internal static class ComponentTests
 
             Console.WriteLine($"    Initial State: CanSeek={provider.CanSeek}, Length={provider.Length}");
             provider.AddSamples(new float[1024]);
-            provider.ReadBytes(new float[512]);
+            provider.ReadSamples(new float[512]);
             Console.WriteLine(
                 $"    Read/Write Check: Position={provider.Position}, SamplesAvailable={provider.SamplesAvailable}");
 
             provider.CompleteAdding();
-            while (provider.ReadBytes(new float[256]) > 0)
+            while (provider.ReadSamples(new float[256]) > 0)
             {
             }
 
@@ -680,7 +683,7 @@ internal static class ComponentTests
             captureDevice.Start();
             provider.StartCapture();
             Thread.Sleep(1000); // Capture some data
-            var bytesRead = provider.ReadBytes(new float[4096]);
+            var bytesRead = provider.ReadSamples(new float[4096]);
             Console.WriteLine($"    Read Check: Read {bytesRead} samples. Position is {provider.Position}.");
             provider.StopCapture();
             captureDevice.Stop();
@@ -707,7 +710,7 @@ internal static class ComponentTests
             using var playbackDevice = Engine.InitializePlaybackDevice(playbackDeviceInfo.Value, Format);
 
             playbackDevice.MasterMixer.AddComponent(player);
-            
+
             provider.StartCapture();
             player.Play();
             captureDevice.Start();
@@ -738,7 +741,7 @@ internal static class ComponentTests
             Console.WriteLine("No playback device found. Skipping playback.");
             return;
         }
-        
+
         using var playbackDevice = Engine.InitializePlaybackDevice(deviceInfo.Value, Format);
         playbackDevice.MasterMixer.AddComponent(component);
         playbackDevice.Start();
@@ -752,7 +755,7 @@ internal static class ComponentTests
         playbackDevice.MasterMixer.RemoveComponent(component);
     }
 
-    private static void TestProviderCore(ISoundDataProvider provider, string providerName)
+    private static void TestProviderCore(IDataProvider provider, string providerName)
     {
         Console.WriteLine($"  Core Contract Test ({providerName}):");
 
@@ -769,7 +772,7 @@ internal static class ComponentTests
                 if (provider.FormatInfo != null) Console.WriteLine($"    Format Info: {provider.FormatInfo.FormatName}, {provider.FormatInfo.Duration}");
 
                 var buffer = new float[4096];
-                var bytesRead = provider.ReadBytes(buffer);
+                var bytesRead = provider.ReadSamples(buffer);
                 Console.WriteLine($"    Read: Read {bytesRead} samples. Position is {provider.Position}. PositionChanged? {(positionChangedFired ? "✓" : "✗")}");
 
                 positionChangedFired = false;
@@ -779,15 +782,15 @@ internal static class ComponentTests
                     var seekPosition = provider.Length / 2;
                     provider.Seek(seekPosition);
                     Console.WriteLine($"    Seek: Position is {provider.Position}. Expected {seekPosition}. PositionChanged? {(positionChangedFired ? "✓" : "✗")}");
-                    bytesRead = provider.ReadBytes(buffer);
+                    bytesRead = provider.ReadSamples(buffer);
                     Console.WriteLine($"    Read After Seek: Read {bytesRead} samples. {(bytesRead > 0 ? "✓" : "✗")}");
                 }
 
-                while (provider.ReadBytes(buffer) > 0) { }
+                while (provider.ReadSamples(buffer) > 0) { }
 
                 // Give event a moment to fire on the audio thread if needed
-                Thread.Sleep(50); 
-                
+                Thread.Sleep(50);
+
                 Console.WriteLine($"    Completion: EndOfStreamReached fired? {(endOfStreamFired ? "✓" : "✗")}");
             }
             catch (Exception ex)

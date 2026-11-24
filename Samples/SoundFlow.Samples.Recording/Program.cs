@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Security.Configuration;
 using SoundFlow.Security.Utils;
@@ -13,9 +13,9 @@ public static class Program
         Console.WriteLine("=== SoundFlow Recorder Sample ===");
         Console.WriteLine("Capabilities: Audio Capture, Metadata Embedding, Authenticated Save.\n");
 
-        Log.OnLog += entry => Console.WriteLine(entry); 
+        Log.OnLog += entry => Console.WriteLine(entry);
 
-        using var engine = new MiniAudioEngine();
+        using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 
         try
         {

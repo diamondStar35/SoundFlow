@@ -1,5 +1,7 @@
+using Engine = SoundFlow.Engine;
+using PlaybackDevice = SoundFlow.Devices.PlaybackDevice;
 using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using SoundFlow.Devices;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Components;
@@ -11,7 +13,7 @@ public sealed class Mixer : SoundComponent
 {
     // Staging list for thread-safe modification
     private readonly List<SoundComponent> _componentsStaging = [];
-    
+
     // Snapshot for the audio thread to read without locking
     private volatile SoundComponent[] _componentsSnapshot = [];
 
@@ -21,13 +23,13 @@ public sealed class Mixer : SoundComponent
     /// <summary>
     /// Gets the playback device this mixer is the master for, if any.
     /// </summary>
-    public AudioPlaybackDevice? ParentDevice { get; internal set; }
+    public PlaybackDevice? ParentDevice { get; internal set; }
 
     /// <summary>
     /// Gets a value indicating whether this is a master mixer for a device.
     /// </summary>
     public bool IsMasterMixer { get; }
-    
+
     /// <summary>
     /// Gets the list of sound components in the mixer.
     /// </summary>
@@ -48,7 +50,7 @@ public sealed class Mixer : SoundComponent
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="isMasterMixer">Indicates if this is a master mixer for a device.</param>
-    public Mixer(AudioEngine engine, AudioFormat format, bool isMasterMixer = false) : base(engine, format)
+    public Mixer(Engine engine, AudioFormat format, bool isMasterMixer = false) : base(engine, format)
     {
         IsMasterMixer = isMasterMixer;
         Name = isMasterMixer ? "Master Mixer" : "Mixer";
@@ -130,8 +132,8 @@ public sealed class Mixer : SoundComponent
         var components = _componentsSnapshot;
 
         foreach (var component in components)
-        { 
-            if (component is { Enabled: true, Mute: false }) 
+        {
+            if (component is { Enabled: true, Mute: false })
                 component.Process(buffer, channels);
         }
     }
@@ -149,7 +151,7 @@ public sealed class Mixer : SoundComponent
             return;
 
         _isDisposed = true;
-        
+
         lock (_modificationLock)
         {
             foreach (var component in _componentsStaging)
@@ -161,7 +163,7 @@ public sealed class Mixer : SoundComponent
             _componentsStaging.Clear();
             _componentsSnapshot = [];
         }
-        
+
         base.Dispose();
     }
 }

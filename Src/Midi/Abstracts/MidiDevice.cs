@@ -1,11 +1,11 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using SoundFlow.Midi.Structs;
 using SoundFlow.Structs;
 
 namespace SoundFlow.Midi.Abstracts;
 
 /// <summary>
-/// Represents a base class for an initialized MIDI device, managed by an <see cref="AudioEngine"/>.
+/// Represents a base class for an initialized MIDI device, managed by an <see cref="SoundFlow.Engine"/>.
 /// </summary>
 public abstract class MidiDevice : IDisposable
 {

@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using SoundFlow.Abstracts;
 using SoundFlow.Structs;
 
@@ -62,19 +63,19 @@ public class EnvelopeGenerator : SoundComponent
         /// </summary>
         Trigger // Instant Attack and Decay, no Sustain
     }
-    
+
     /// <summary>
     /// Initializes a new instance of the <see cref="EnvelopeGenerator"/> class.
     /// </summary>
     /// <param name="engine">The parent audio engine.</param>
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
-    public EnvelopeGenerator(AudioEngine engine, AudioFormat format) : base(engine, format) { }
+    public EnvelopeGenerator(Engine engine, AudioFormat format) : base(engine, format) { }
 
     /// <summary>
     /// Gets the current stage of the envelope.
     /// </summary>
     public EnvelopeState State => _currentState;
-    
+
     /// <summary>
     /// Gets or sets the attack time in seconds.
     /// This is the time it takes for the envelope to rise from 0 to 1.

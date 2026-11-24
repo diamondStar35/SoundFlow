@@ -1,4 +1,7 @@
-﻿using SoundFlow.Abstracts;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
@@ -13,7 +16,7 @@ namespace SoundFlow.Samples.SwitchDevices;
 /// </summary>
 internal static class Program
 {
-    private static readonly AudioEngine Engine = new MiniAudioEngine();
+    private static readonly CoreEngine Engine = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
 
     private static void Main()
@@ -289,7 +292,7 @@ internal static class Program
 
     private static DeviceInfo? SelectDevice(DeviceType type)
     {
-        Engine.UpdateDevicesInfo();
+        Engine.UpdateAudioDevicesInfo();
         var devices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
         if (devices.Length == 0)

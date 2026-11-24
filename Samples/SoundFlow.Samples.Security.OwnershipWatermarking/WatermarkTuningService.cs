@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
 using SoundFlow.Security.Configuration;
@@ -18,10 +19,10 @@ public static class WatermarkTuningService
     /// <param name="secretMessage">The exact secret message that will be embedded.</param>
     /// <param name="key">The secret key for the watermark.</param>
     /// <returns>An auto-tuned <see cref="WatermarkConfiguration"/> object.</returns>
-    public static async Task<WatermarkConfiguration> TuneAsync(AudioEngine engine, string sourceFile, string secretMessage, string key)
+    public static async Task<WatermarkConfiguration> TuneAsync(Engine engine, string sourceFile, string secretMessage, string key)
     {
         Console.WriteLine($"Analyzing '{sourceFile}' to find optimal watermark settings...");
-        
+
         await using var tuneStream = new FileStream(sourceFile, FileMode.Open);
         using var tuneProvider = new AssetDataProvider(engine, tuneStream);
 

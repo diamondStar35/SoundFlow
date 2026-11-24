@@ -1,4 +1,4 @@
-﻿using SoundFlow.Security;
+using SoundFlow.Security;
 using SoundFlow.Security.Configuration;
 
 namespace SoundFlow.Samples.Security.Authentication;
@@ -21,7 +21,7 @@ public static class SigningService
         var signConfig = new SignatureConfiguration { PrivateKeyPem = privateKey };
 
         Console.Write($"Signing {Path.GetFileName(inputPath)}...");
-        
+
         var signResult = await FileAuthenticator.SignFileAsync(inputPath, signConfig);
         if (signResult.IsSuccess)
         {

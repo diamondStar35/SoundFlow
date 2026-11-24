@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+using Engine = SoundFlow.Engine;
+using System.Buffers;
 using SoundFlow.Abstracts;
 using SoundFlow.Midi.Abstracts;
 using SoundFlow.Midi.Enums;
@@ -20,10 +21,10 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
     private readonly MidiChannel[] _channels = new MidiChannel[16];
     private readonly Dictionary<int, IVoice> _mpeNoteToVoiceMap = new(); // Note number -> Active MPE voice
     private bool _mpeEnabled;
-    
+
     private readonly List<MidiModifier> _midiModifiers = [];
     private readonly object _modifierLock = new();
-    
+
     private float _bpm = 120f;
 
     /// <inheritdoc />
@@ -52,7 +53,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
         get => _bpm;
         set => _bpm = Math.Max(0.1f, value);
     }
-    
+
     /// <summary>
     /// Gets or sets whether the synthesizer operates in MPE (MIDI Polyphonic Expression) mode.
     /// </summary>
@@ -63,7 +64,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
         {
             if (_mpeEnabled == value) return;
             _mpeEnabled = value;
-            
+
             // When switching modes, send an "All Notes Off" to prevent stuck notes.
             DispatchMidiMessage(new MidiMessage(0xB0, 123, 0));
         }
@@ -75,7 +76,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
     /// <param name="engine">The parent audio engine.</param>
     /// <param name="format">The audio format for the synthesizer's output.</param>
     /// <param name="instrumentBank">The bank of instruments the synthesizer will use.</param>
-    public Synthesizer(AudioEngine engine, AudioFormat format, IInstrumentBank instrumentBank) : base(engine, format)
+    public Synthesizer(Engine engine, AudioFormat format, IInstrumentBank instrumentBank) : base(engine, format)
     {
         for (var i = 0; i < _channels.Length; i++)
         {
@@ -129,7 +130,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
                     nextStageMessages.AddRange(modifier.Process(inputMsg));
                 }
                 currentMessages = nextStageMessages;
-                
+
                 // If everything was filtered out, stop early
                 if (currentMessages.Count == 0) break;
             }
@@ -176,7 +177,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
             _channels[channelIndex].ProcessMidiMessage(message);
         }
     }
-    
+
     /// <summary>
     /// Resets the synthesizer to a clean state, killing all sounding voices and resetting all channel parameters.
     /// </summary>
@@ -200,7 +201,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
         switch (mpeEvent)
         {
             case MidiMessage msg:
-                // Route MPE-derived Note On/Off through the standard pipeline 
+                // Route MPE-derived Note On/Off through the standard pipeline
                 // so modifiers like Velocity or Transpose can still apply.
                 ProcessMidiMessage(msg);
                 break;
@@ -214,15 +215,15 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
                 }
                 break;
             case MidiManager.PerNotePitchBendEvent pb:
-                if (_mpeNoteToVoiceMap.TryGetValue(pb.NoteNumber, out var pbVoice)) 
+                if (_mpeNoteToVoiceMap.TryGetValue(pb.NoteNumber, out var pbVoice))
                     pbVoice.SetPerNotePitchBend(pb.BendSemitones);
                 break;
             case MidiManager.PerNotePressureEvent p:
-                if (_mpeNoteToVoiceMap.TryGetValue(p.NoteNumber, out var pVoice)) 
+                if (_mpeNoteToVoiceMap.TryGetValue(p.NoteNumber, out var pVoice))
                     pVoice.SetPerNotePressure(p.Pressure);
                 break;
             case MidiManager.PerNoteTimbreEvent t:
-                if (_mpeNoteToVoiceMap.TryGetValue(t.NoteNumber, out var tVoice)) 
+                if (_mpeNoteToVoiceMap.TryGetValue(t.NoteNumber, out var tVoice))
                     tVoice.SetPerNoteTimbre(t.Timbre);
                 break;
         }
@@ -278,7 +279,7 @@ public sealed class Synthesizer : SoundComponent, IMidiControllable
         }
         finally
         {
-            if (rentedBuffer != null) 
+            if (rentedBuffer != null)
                 ArrayPool<float>.Shared.Return(rentedBuffer);
         }
     }

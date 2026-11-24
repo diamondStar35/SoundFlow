@@ -1,3 +1,5 @@
+using SoundFlow.Providers;
+using Engine = SoundFlow.Engine;
 using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
@@ -15,8 +17,8 @@ public sealed class SoundPlayer : SoundPlayerBase
     /// <param name="engine">The audio engine used for managing audio playback.</param>
     /// <param name="format">The format of the audio stream, including sample rate, sample format, and channel count.</param>
     /// <param name="dataProvider">The data provider that supplies audio data for playback.</param>
-    public SoundPlayer(AudioEngine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format, dataProvider) { }
-    
+    public SoundPlayer(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format, dataProvider) { }
+
     /// <inheritdoc />
     public override string Name { get; set; } = "Sound Player";
 }

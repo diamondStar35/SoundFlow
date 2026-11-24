@@ -1,9 +1,9 @@
-using CaptureDevice = SoundFlow.Abstracts.Devices.AudioCaptureDevice;
-using DeviceConfiguration = SoundFlow.Abstracts.Devices.DeviceConfig;
-using Engine = SoundFlow.Abstracts.AudioEngine;
-using PlaybackDevice = SoundFlow.Abstracts.Devices.AudioPlaybackDevice;
+using CaptureDevice = SoundFlow.Devices.CaptureDevice;
+using DeviceConfiguration = SoundFlow.Devices.DeviceConfiguration;
+using Engine = SoundFlow.Engine;
+using PlaybackDevice = SoundFlow.Devices.PlaybackDevice;
 using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using SoundFlow.Devices;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Providers;

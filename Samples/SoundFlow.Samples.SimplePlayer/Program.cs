@@ -1,5 +1,9 @@
-﻿using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using CoreDeviceConfiguration = SoundFlow.Devices.DeviceConfiguration;
+using CoreEngine = SoundFlow.Engine;
+using DeviceConfiguration = SoundFlow.Backends.MiniAudio.DeviceConfiguration;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Abstracts;
+using SoundFlow.Devices;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Backends.MiniAudio.Devices;
 using SoundFlow.Backends.MiniAudio.Enums;
@@ -13,11 +17,11 @@ namespace SoundFlow.Samples.SimplePlayer;
 internal static class Program
 {
     private static readonly string RecordedFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "recorded.wav");
-    private static readonly AudioEngine Engine = new MiniAudioEngine();
+    private static readonly CoreEngine Engine = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
-    
+
     // Represents detailed configuration for a MiniAudio device, allowing fine-grained control over general and backend-specific settings.
-    private static readonly DeviceConfig DeviceConfig =  new MiniAudioDeviceConfig
+    private static readonly CoreDeviceConfiguration Configuration =  new DeviceConfiguration
     {
         PeriodSizeInFrames = 9600, // 10ms at 48kHz = 480 frames @ 2 channels = 960 frames
         Playback = new DeviceSubConfig
@@ -54,13 +58,13 @@ internal static class Program
                 switch (choice)
                 {
                     case '1':
-                        PlaybackService.PlayFromUserInput(Engine, Format, DeviceConfig);
+                        PlaybackService.PlayFromUserInput(Engine, Format, Configuration);
                         break;
                     case '2':
-                        RecordingService.RecordAndPlayback(Engine, Format, DeviceConfig, RecordedFilePath);
+                        RecordingService.RecordAndPlayback(Engine, Format, Configuration, RecordedFilePath);
                         break;
                     case '3':
-                        PassthroughService.Run(Engine, Format, DeviceConfig);
+                        PassthroughService.Run(Engine, Format, Configuration);
                         break;
                     case '4':
                         ComponentTests.Run();

@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Version>1.4.2</Version>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Description>MiniAudio device backend and built-in codecs for SoundFlow.</Description>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(IOSHostBuild)' == 'true'">
+        <DefineConstants>$(DefineConstants);SOUNDFLOW_IOS_FRAMEWORK_IMPORTS</DefineConstants>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../Src/SoundFlow.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <InternalsVisibleTo Include="SoundFlow.Tests" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="runtimes/**/*" Pack="true" PackagePath="runtimes" />
+    </ItemGroup>
+    <Import Project="../../Packaging/NativeAssets.targets" />
+    <ItemGroup>
+        <None Include="SoundFlow.Backends.MiniAudio.targets" Pack="true" PackagePath="buildTransitive" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" PackagePath="README.md" />
+    </ItemGroup>
+</Project>

@@ -1,4 +1,6 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Providers;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Components;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -21,18 +23,18 @@ public static class PlaybackService
     /// <param name="encryptedFile">The path to the encrypted container file.</param>
     /// <param name="secretKey">The 32-byte secret key used for encryption.</param>
     /// <param name="publicKey">The PEM-encoded public key. If provided, signature verification is enforced.</param>
-    public static async Task PlayEncryptedStreamAsync(AudioEngine engine, string encryptedFile, byte[] secretKey, string? publicKey = null)
+    public static async Task PlayEncryptedStreamAsync(Engine engine, string encryptedFile, byte[] secretKey, string? publicKey = null)
     {
         Console.WriteLine("Preparing for real-time encrypted playback...");
 
-        Result<ISoundDataProvider> providerResult;
+        Result<IDataProvider> providerResult;
         var fileStream = new FileStream(encryptedFile, FileMode.Open, FileAccess.Read);
 
         if (!string.IsNullOrEmpty(publicKey))
         {
             string? signature = null;
             var sigPath = encryptedFile + ".sig";
-            
+
             // Check for detached signature
             if (File.Exists(sigPath))
             {
@@ -46,7 +48,7 @@ public static class PlaybackService
 
             Console.WriteLine("Verifying signature...");
             var signConfig = new SignatureConfiguration { PublicKeyPem = publicKey };
-            
+
             // This handles verification for both embedded (signature=null) and detached cases.
             providerResult = await AudioEncryptor.VerifyAndDecryptAsync(fileStream, secretKey, signConfig, signature);
         }
@@ -54,7 +56,7 @@ public static class PlaybackService
         {
             providerResult = AudioEncryptor.Decrypt(fileStream, secretKey);
         }
-        
+
         if (providerResult.IsFailure)
         {
             await fileStream.DisposeAsync();
@@ -66,7 +68,7 @@ public static class PlaybackService
 
         // The provider now owns the fileStream and will dispose it when the provider is disposed.
         using var provider = providerResult.Value!;
-        
+
         var format = new AudioFormat
         {
             SampleRate = provider.SampleRate,
@@ -78,7 +80,7 @@ public static class PlaybackService
         using var device = engine.InitializePlaybackDevice(null, format);
         var player = new SoundPlayer(engine, format, provider);
         device.MasterMixer.AddComponent(player);
-        
+
         Console.WriteLine("Starting playback...");
         device.Start();
         player.Play();
@@ -88,7 +90,7 @@ public static class PlaybackService
         {
             await Task.Delay(100);
         }
-        
+
         if (Console.KeyAvailable) Console.ReadKey(true);
 
         player.Stop();

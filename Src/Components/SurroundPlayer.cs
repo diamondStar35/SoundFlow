@@ -1,5 +1,5 @@
 using SoundFlow.Providers;
-using Engine = SoundFlow.Abstracts.AudioEngine;
+using Engine = SoundFlow.Engine;
 using System.Buffers;
 using System.Numerics;
 using SoundFlow.Abstracts;
@@ -149,7 +149,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
     /// <param name="engine">The audio engine used for managing audio playback.</param>
     /// <param name="format">The format of the audio stream, including sample rate, sample format, and channel count.</param>
     /// <param name="dataProvider">The data provider that supplies audio data for playback.</param>
-    public SurroundPlayer(Engine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format, dataProvider)
+    public SurroundPlayer(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format, dataProvider)
     {
         _lowPassFilter = new LowPassModifier(format, 120f);
         InitializePredefinedConfigurations();

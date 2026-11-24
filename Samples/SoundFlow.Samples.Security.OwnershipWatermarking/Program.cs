@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 
 namespace SoundFlow.Samples.Security.OwnershipWatermarking;
 
@@ -15,21 +15,21 @@ public static class Program
 {
     private const string SecretMessage = "SoundFlow Ownership Test - Property of LSXPrime";
     private const string SecretKey = "MySuperSecretKey123!";
-    
+
     public static async Task Main()
     {
         Console.WriteLine("--- SoundFlow Ownership Watermarking Test (Robust) ---");
         Console.WriteLine();
-        
+
         var originalFile = GetExistingFilePath("Enter the path to the source audio file you want to watermark (e.g., original.wav):");
-        
+
         // Define temporary file paths in a temporary directory
         var tempDir = Path.Combine(Path.GetTempPath(), "SoundFlowSample");
         Directory.CreateDirectory(tempDir);
         var watermarkedFile = Path.Combine(tempDir, "watermarked.wav");
         var modifiedFile = Path.Combine(tempDir, "watermarked-modified.wav");
-        
-        using var engine = new MiniAudioEngine();
+
+        using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 
         try
         {

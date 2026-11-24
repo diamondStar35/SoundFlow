@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -28,15 +29,15 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     // Processing state (Staging)
     private readonly List<SoundModifier> _modifiersStaging = [];
     private readonly List<AudioAnalyzer> _analyzersStaging = [];
-    
+
     // Processing snapshots (For audio thread)
     private volatile SoundModifier[] _modifiersSnapshot = [];
     private volatile AudioAnalyzer[] _analyzersSnapshot = [];
-    
+
     private float _pan = 0.5f;
     private bool _solo;
     private float _volume = 1f;
-    
+
     // Cached calculations to avoid math in hot path
     private volatile float _volumePanLeft;
     private volatile float _volumePanRight;
@@ -50,7 +51,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
 
     /// <inheritdoc />
     public Guid Id { get; } = Guid.NewGuid();
-    
+
     /// <summary>
     /// Gets a value indicating whether this component has been disposed.
     /// </summary>
@@ -59,8 +60,8 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     /// <summary>
     /// Gets the engine context this component belongs to.
     /// </summary>
-    public AudioEngine Engine { get; }
-    
+    public Engine Engine { get; }
+
     /// <summary>
     /// Gets the audio format of the component.
     /// </summary>
@@ -79,7 +80,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     /// <summary>
     ///     Initializes a new instance of the <see cref="SoundComponent" /> class.
     /// </summary>
-    protected SoundComponent(AudioEngine engine, AudioFormat format)
+    protected SoundComponent(Engine engine, AudioFormat format)
     {
         Engine = engine;
         Format = format;
@@ -263,7 +264,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             // Update Staging
             _inputsStaging.Add(input);
             input._outputsStaging.Add(this);
-            
+
             // Update Snapshots
             _inputsSnapshot = _inputsStaging.ToArray();
             input._outputsSnapshot = input._outputsStaging.ToArray();
@@ -591,13 +592,13 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
 
         var volX = volume.X;
         var volY = volume.Y;
-        
+
         var i = 0;
 
         if (Vector.IsHardwareAccelerated && buffer.Length >= Vector<float>.Count)
         {
             var vectorSize = Vector<float>.Count;
-            
+
             if (vectorSize % 2 == 0)
             {
                 Span<float> gainFactorsSpan = stackalloc float[vectorSize];
@@ -629,7 +630,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             buffer[i] *= (volX + volY) * 0.5f;
         }
     }
-    
+
     private static void ApplyMultiChannelVolume(Span<float> buffer, int channels, Vector2 volumePan)
     {
         if (channels < 2) return;
@@ -689,13 +690,13 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             {
                 output.DisconnectInput(this);
             }
-            
+
             // Disconnect from our inputs.
             foreach (var input in inputsToDisconnect)
             {
                 DisconnectInput(input);
             }
-            
+
             lock (_stateLock)
             {
                 _modifiersStaging.Clear();
@@ -704,7 +705,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
                 _analyzersSnapshot = [];
             }
         }
-        
+
         // Clear connection lists.
         lock (_connectionsLock)
         {

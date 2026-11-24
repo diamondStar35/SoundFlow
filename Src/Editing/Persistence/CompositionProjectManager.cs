@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using System.Buffers;
 using System.Reflection;
 using System.Text.Json;
@@ -38,11 +39,11 @@ public static class CompositionProjectManager
     /// <param name="projectFilePath">The full path where the project file will be saved.</param>
     /// <param name="options">Configuration options for the save operation. If null, default options will be used.</param>
     /// <param name="customTypeResolver">
-    /// An optional JSON type resolver for user-defined types. 
+    /// An optional JSON type resolver for user-defined types.
     /// Required if your project contains custom Modifiers or Analyzers in a NativeAOT environment.
     /// </param>
     public static async Task SaveProjectAsync(
-        AudioEngine engine,
+        Engine engine,
         Composition composition,
         string projectFilePath,
         ProjectSaveOptions? options = null,
@@ -63,7 +64,7 @@ public static class CompositionProjectManager
                 ? JsonTypeInfoResolver.Combine(SoundFlowJsonContext.Default, customTypeResolver)
                 : SoundFlowJsonContext.Default
         };
-        
+
         var projectData = new ProjectData
         {
             ProjectFileVersion = options.ProjectFileVersion,
@@ -86,7 +87,7 @@ public static class CompositionProjectManager
 
         if (options.ConsolidateMedia) Directory.CreateDirectory(mediaAssetsDirectory);
 
-        var sourceProviderMap = new Dictionary<ISoundDataProvider, ProjectSourceReference>();
+        var sourceProviderMap = new Dictionary<IDataProvider, ProjectSourceReference>();
         var midiSequenceMap = new Dictionary<MidiSequence, ProjectSourceReference>();
 
         foreach (var track in composition.Tracks)
@@ -246,8 +247,8 @@ public static class CompositionProjectManager
     }
 
     private static async Task<ProjectSourceReference> CreateSourceReferenceAsync(
-        ISoundDataProvider provider,
-        AudioEngine engine,
+        IDataProvider provider,
+        Engine engine,
         string projectDirectory,
         string mediaAssetsDirectory,
         ProjectSaveOptions options)
@@ -279,7 +280,7 @@ public static class CompositionProjectManager
                 try
                 {
                     provider.Seek(0);
-                    var readCount = provider.ReadBytes(tempBuffer.AsSpan(0, samplesToEmbed));
+                    var readCount = provider.ReadSamples(tempBuffer.AsSpan(0, samplesToEmbed));
                     if (readCount == samplesToEmbed)
                     {
                         var byteBuffer = new byte[readCount * sizeof(float)];
@@ -313,7 +314,7 @@ public static class CompositionProjectManager
                 try
                 {
                     provider.Seek(0); // Read from the beginning
-                    var samplesRead = provider.ReadBytes(tempBuffer.AsSpan(0, totalSamples));
+                    var samplesRead = provider.ReadSamples(tempBuffer.AsSpan(0, totalSamples));
 
                     if (samplesRead == totalSamples && totalSamples > 0)
                     {
@@ -429,14 +430,14 @@ public static class CompositionProjectManager
     /// <param name="format">The audio format of the composition. Cannot be null.</param>
     /// <param name="projectFilePath">The full path of the project file to load.</param>
     /// <param name="customTypeResolver">
-    /// An optional JSON type resolver for user-defined types. 
+    /// An optional JSON type resolver for user-defined types.
     /// Required if your project contains custom Modifiers or Analyzers in a NativeAOT environment.
     /// </param>
     /// <returns>A tuple containing the loaded Composition and a list of missing/unresolved source references.</returns>
     public static async Task<(Composition Composition, List<ProjectSourceReference> UnresolvedSources)>
         LoadProjectAsync(
-            AudioEngine engine, 
-            AudioFormat format, 
+            Engine engine,
+            AudioFormat format,
             string projectFilePath,
             IJsonTypeInfoResolver? customTypeResolver = null)
     {
@@ -476,7 +477,7 @@ public static class CompositionProjectManager
         composition.TempoTrack.AddRange(projectData.TempoTrack.Select(m => new TempoMarker(m.Time, m.BeatsPerMinute)));
         composition.Modifiers.AddRange(DeserializeEffects<SoundModifier>(format, projectData.Modifiers, composition, jsonOptions));
         composition.Analyzers.AddRange(DeserializeEffects<AudioAnalyzer>(format, projectData.Analyzers, composition, jsonOptions));
-        
+
         var deserializedMidiControllables = DeserializeEffects<IMidiControllable>(format, projectData.MidiTargets, composition, jsonOptions);
         composition.MidiTargets.AddRange(deserializedMidiControllables.Select(c => new MidiTargetNode(c)));
 
@@ -485,7 +486,7 @@ public static class CompositionProjectManager
                                ?? throw new IOException("Invalid project file path.");
         var unresolvedSources = new List<ProjectSourceReference>();
 
-        var resolvedProviderCache = new Dictionary<Guid, ISoundDataProvider>();
+        var resolvedProviderCache = new Dictionary<Guid, IDataProvider>();
         var resolvedMidiSequenceCache = new Dictionary<Guid, MidiSequence>();
 
         foreach (var sourceRef in projectData.SourceReferences)
@@ -672,7 +673,7 @@ public static class CompositionProjectManager
         return (composition, unresolvedSources);
     }
 
-    private static ISoundDataProvider? ResolveSourceReference(AudioEngine engine, ProjectSourceReference sourceRef,
+    private static IDataProvider? ResolveSourceReference(Engine engine, ProjectSourceReference sourceRef,
         string projectDirectory)
     {
         // 1. Try Embedded
@@ -771,7 +772,7 @@ public static class CompositionProjectManager
 
     /// <summary>
     /// Attempts to relink a missing audio source reference by providing a new file path.
-    /// If successful, the reference is updated, and a new ISoundDataProvider is resolved.
+    /// If successful, the reference is updated, and a new IDataProvider is resolved.
     /// The caller is responsible for updating any AudioSegments in the composition that use this source reference.
     /// </summary>
     /// <param name="engine">The audio engine instance for context.</param>
@@ -779,11 +780,11 @@ public static class CompositionProjectManager
     /// <param name="newFilePath">The new absolute file path to the audio source.</param>
     /// <param name="projectDirectory">The base directory of the current project (used for resolving paths).</param>
     /// <returns>
-    /// True if relinking was successful and a new ISoundDataProvider was resolved for the reference;
-    /// otherwise, false. The updated ISoundDataProvider is set on missingSourceReference.ResolvedDataProvider.
+    /// True if relinking was successful and a new IDataProvider was resolved for the reference;
+    /// otherwise, false. The updated IDataProvider is set on missingSourceReference.ResolvedDataProvider.
     /// </returns>
     public static bool RelinkMissingMedia(
-        AudioEngine engine,
+        Engine engine,
         ProjectSourceReference missingSourceReference,
         string newFilePath,
         string projectDirectory)

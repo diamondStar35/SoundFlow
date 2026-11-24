@@ -53,7 +53,7 @@ public class ProjectSourceReference
     /// The original sample rate of the source if known.
     /// </summary>
     public int? OriginalSampleRate { get; set; }
-    
+
     /// <summary>
     /// The original channel layout of the source audio.
     /// </summary>
@@ -67,11 +67,11 @@ public class ProjectSourceReference
     public bool IsMissing { get; set; }
 
     /// <summary>
-    /// For internal use during loading: the resolved ISoundDataProvider instance.
+    /// For internal use during loading: the resolved IDataProvider instance.
     /// Not serialized.
     /// </summary>
     [JsonIgnore]
-    public ISoundDataProvider? ResolvedDataProvider { get; set; }
+    public IDataProvider? ResolvedDataProvider { get; set; }
 
     /// <summary>
     /// For internal use during loading: the resolved MidiDataProvider instance.

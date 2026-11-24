@@ -1,4 +1,5 @@
-﻿using System;
+using SoundFlow.Providers;
+using System;
 using System.Buffers;
 using System.Runtime.InteropServices;
 using SoundFlow.Enums;
@@ -15,13 +16,13 @@ namespace SoundFlow.Extensions.WebRtc.Apm.Components;
 public delegate void ProcessedAudioChunkHandler(ReadOnlyMemory<float> processedChunk);
 
 /// <summary>
-/// Processes audio from an ISoundDataProvider using WebRTC Noise Suppression
+/// Processes audio from an IDataProvider using WebRTC Noise Suppression
 /// and provides the cleaned audio either as a complete raw float array or
 /// chunk by chunk via an event. This component is designed for offline/batch processing.
 /// </summary>
 public class NoiseSuppressor : IDisposable
 {
-    private readonly ISoundDataProvider _dataProvider;
+    private readonly IDataProvider _dataProvider;
     private readonly AudioProcessingModule _apm;
     private readonly ApmConfig _apmConfig;
     private readonly StreamConfig _inputStreamConfig;
@@ -58,7 +59,7 @@ public class NoiseSuppressor : IDisposable
     /// <exception cref="ArgumentNullException">Thrown if dataProvider is null.</exception>
     /// <exception cref="ArgumentException">Thrown if audioFormat is invalid or unsupported by WebRTC APM.</exception>
     public NoiseSuppressor(
-        ISoundDataProvider dataProvider,
+        IDataProvider dataProvider,
         AudioFormat audioFormat,
         NoiseSuppressionLevel suppressionLevel = NoiseSuppressionLevel.High,
         bool useMultichannelProcessing = false)
@@ -186,7 +187,7 @@ public class NoiseSuppressor : IDisposable
             {
                 // Read a full APM frame's worth of interleaved samples from the provider
                 Array.Clear(providerReadBuffer, 0, samplesPerApmFrameInterleaved);
-                samplesActuallyReadFromProvider = _dataProvider.ReadBytes(
+                samplesActuallyReadFromProvider = _dataProvider.ReadSamples(
                     providerReadBuffer.AsSpan(0, samplesPerApmFrameInterleaved));
 
                 if (samplesActuallyReadFromProvider > 0)

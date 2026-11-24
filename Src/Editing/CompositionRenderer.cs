@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+using SoundFlow.Providers;
+using System.Buffers;
 using System.ComponentModel;
 using SoundFlow.Interfaces;
 using SoundFlow.Enums;
@@ -10,10 +11,10 @@ namespace SoundFlow.Editing;
 
 /// <summary>
 /// Renders a <see cref="Composition"/> into an audio stream.
-/// This class implements <see cref="ISoundDataProvider"/>, allowing a whole composition
+/// This class implements <see cref="IDataProvider"/>, allowing a whole composition
 /// to be treated as a single audio source for playback or further processing.
 /// </summary>
-public sealed class CompositionRenderer : ISoundDataProvider
+public sealed class CompositionRenderer : IDataProvider
 {
     private readonly Composition _composition;
     private int _currentReadPositionSamples;
@@ -49,7 +50,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     {
         _composition = composition;
     }
-    
+
     #region Sync Transport Controls
 
     /// <summary>
@@ -77,7 +78,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
         _state = PlaybackState.Stopped;
         Seek(0);
     }
-    
+
     /// <summary>
     /// Resumes playback from the current position.
     /// </summary>
@@ -89,7 +90,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     {
         _state = PlaybackState.Playing;
     }
-    
+
     /// <summary>
     /// Seeks the playback position to a specific time.
     /// </summary>
@@ -103,7 +104,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
         var sampleOffset = (int)(time.TotalSeconds * SampleRate * _composition.TargetChannels);
         Seek(sampleOffset);
     }
-    
+
     /// <summary>
     /// Advances the playback position by a specified number of sync ticks.
     /// This is used when <see cref="IsSyncDriven"/> is true.
@@ -116,13 +117,13 @@ public sealed class CompositionRenderer : ISoundDataProvider
     public void AdvanceBySyncTicks(int tickCount)
     {
         if (!IsSyncDriven || _state != PlaybackState.Playing) return;
-        
+
         var samplesPerQuarter = SampleRate * 60.0 / GetTempoAtCurrentPosition().BeatsPerMinute;
         var samplesPerTick = (int)(samplesPerQuarter / _composition.TicksPerQuarterNote);
-        
+
         _currentReadPositionSamples += samplesPerTick * tickCount * _composition.TargetChannels;
     }
-    
+
     /// <summary>
     /// Gets the tempo marker active at the current playback position.
     /// </summary>
@@ -137,7 +138,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     }
 
     #endregion
-    
+
     /// <summary>
     /// Renders the full composition into a new float array.
     /// </summary>
@@ -206,7 +207,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
                     outputBuffer[i] += tempBufferSpan[i];
                 }
             }
-            
+
             // Render MIDI tracks
             var activeMidiTracks = GetActiveMidiTracksForRendering();
             foreach (var midiTrack in activeMidiTracks)
@@ -249,7 +250,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
             outputBuffer[i] *= _composition.MasterVolume;
             outputBuffer[i] = Math.Clamp(outputBuffer[i], -1.0f, 1.0f);
         }
-        
+
         return samplesToRender;
     }
 
@@ -263,39 +264,39 @@ public sealed class CompositionRenderer : ISoundDataProvider
         var soloedTracks = _composition.Tracks.Where(t => t.Settings is { IsSoloed: true, IsEnabled: true, IsMuted: false }).ToList();
         return soloedTracks.Count != 0 ? soloedTracks : _composition.Tracks.Where(t => t.Settings is { IsMuted: false, IsEnabled: true }).ToList();
     }
-    
+
     private List<MidiTrack> GetActiveMidiTracksForRendering()
     {
         var soloedTracks = _composition.MidiTracks.Where(t => t.Settings is { IsSoloed: true, IsEnabled: true, IsMuted: false }).ToList();
         return soloedTracks.Count != 0 ? soloedTracks : _composition.MidiTracks.Where(t => t.Settings is { IsMuted: false, IsEnabled: true }).ToList();
     }
-    
-    #region ISoundDataProvider Implementation
+
+    #region IDataProvider Implementation
 
     /// <inheritdoc />
     public int Position => _currentReadPositionSamples;
-    
+
     /// <summary>
     /// Gets the current playback time in <see cref="TimeSpan"/>.
     /// </summary>
-    public TimeSpan CurrentTime => 
+    public TimeSpan CurrentTime =>
         TimeSpan.FromSeconds((double)_currentReadPositionSamples / SampleRate / _composition.TargetChannels);
 
     /// <inheritdoc />
     public int Length => (int)(_composition.Editor.CalculateTotalDuration().TotalSeconds * _composition.SampleRate * _composition.TargetChannels);
-    
+
     /// <inheritdoc />
     public bool CanSeek => true;
 
     /// <inheritdoc />
     public SampleFormat SampleFormat => SampleFormat.F32;
-    
+
     /// <inheritdoc />
     public int SampleRate => _composition.SampleRate;
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
     public SoundFormatInfo? FormatInfo => null;
 
@@ -306,10 +307,10 @@ public sealed class CompositionRenderer : ISoundDataProvider
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
-        
+
         // If we are starting playback, reset all synthesizers once.
         if (_needsReset)
         {
@@ -322,7 +323,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
             }
             _needsReset = false;
         }
-        
+
         // If not sync-driven, playback is controlled by the consumer calling this method.
         if (!IsSyncDriven)
         {
@@ -334,7 +335,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
             buffer.Clear();
             return buffer.Length;
         }
-        
+
         var currentTime = CurrentTime;
         var durationToRead = TimeSpan.FromSeconds((double)buffer.Length / SampleRate / _composition.TargetChannels);
         var totalDuration = _composition.Editor.CalculateTotalDuration();
@@ -344,7 +345,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
         {
             var loopDuration = LoopEndTime.Value - LoopStartTime.Value;
             var loopDurationSamples = (long)(loopDuration.TotalSeconds * SampleRate * _composition.TargetChannels);
-            
+
             // Notify the recorder that a transport loop has occurred for correct timestamping.
             _composition.Recorder.OnTransportLoop(loopDurationSamples);
 
@@ -359,15 +360,15 @@ public sealed class CompositionRenderer : ISoundDataProvider
         }
 
         var effectiveEndTime = LoopEndTime ?? totalDuration;
-        if (currentTime + durationToRead > effectiveEndTime) 
+        if (currentTime + durationToRead > effectiveEndTime)
             durationToRead = effectiveEndTime - currentTime;
-            
+
         var samplesWritten = Render(currentTime, durationToRead, buffer);
-            
+
         _currentReadPositionSamples += samplesWritten;
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(_currentReadPositionSamples));
 
-        if (samplesWritten < buffer.Length || currentTime + durationToRead >= totalDuration) 
+        if (samplesWritten < buffer.Length || currentTime + durationToRead >= totalDuration)
             EndOfStreamReached?.Invoke(this, EventArgs.Empty);
         return samplesWritten;
     }
@@ -376,11 +377,11 @@ public sealed class CompositionRenderer : ISoundDataProvider
     public void Seek(int sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
-        
+
         _currentReadPositionSamples = Math.Clamp(sampleOffset, 0, Length);
-        
+
         if (_currentReadPositionSamples == 0) _needsReset = true;
-        
+
         // Signal to all segments that their internal read state is now invalid because of this time jump.
         foreach (var track in _composition.Tracks)
         {
@@ -389,7 +390,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
                 segment.InvalidateReadState();
             }
         }
-        
+
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(_currentReadPositionSamples));
     }
 
@@ -399,6 +400,6 @@ public sealed class CompositionRenderer : ISoundDataProvider
         if (IsDisposed) return;
         IsDisposed = true;
     }
-    
+
     #endregion
 }

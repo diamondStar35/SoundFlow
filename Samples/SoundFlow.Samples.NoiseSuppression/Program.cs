@@ -1,4 +1,7 @@
-﻿using SoundFlow.Abstracts;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
@@ -16,7 +19,7 @@ namespace SoundFlow.Samples.NoiseSuppression;
 /// </summary>
 internal static class Program
 {
-    private static readonly AudioEngine Engine = new MiniAudioEngine();
+    private static readonly CoreEngine Engine = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.Dvd;
     private static readonly string CleanedFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "cleaned-audio.wav");
 
@@ -77,7 +80,7 @@ internal static class Program
     /// </summary>
     private static DeviceInfo? SelectDevice(DeviceType type)
     {
-        Engine.UpdateDevicesInfo();
+        Engine.UpdateAudioDevicesInfo();
         var devices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
         if (devices.Length == 0)
@@ -131,7 +134,7 @@ internal static class Program
         using var soundPlayer = new SoundPlayer(Engine, Format, dataProvider);
 
         soundPlayer.AddModifier(new VocalExtractorModifier(Format.SampleRate));
-        
+
         // Add a modifier to the player to apply noise suppression.
         soundPlayer.AddModifier(new WebRtcApmModifier(device: playbackDevice, nsEnabled: true, nsLevel: NoiseSuppressionLevel.VeryHigh));
 
@@ -221,15 +224,15 @@ internal static class Program
             Console.WriteLine("File not found.");
             return;
         }
-        
+
         // NOTE: The NoiseSuppressor component is designed for offline file-to-file processing.
         Console.WriteLine("\nProcessing... This may take a moment for large files.");
-        
+
         using var inputStream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-        
+
         // For offline processing, a device-independent data provider is used.
-        using var dataProvider = new StreamDataProvider(Engine, Format,  inputStream); 
-        
+        using var dataProvider = new StreamDataProvider(Engine, Format,  inputStream);
+
         using var noiseSuppressor = new NoiseSuppressor(
             dataProvider: dataProvider,
             audioFormat: Format,
@@ -241,7 +244,7 @@ internal static class Program
 
         using var outputStream = new FileStream(CleanedFilePath, FileMode.Create, FileAccess.Write);
         using var encoder = Engine.CreateEncoder(outputStream, "wav", Format);
-        
+
         encoder.Encode(cleanData.AsSpan());
 
         Console.WriteLine($"Processing complete. Cleaned audio saved to: {CleanedFilePath}");

@@ -1,4 +1,4 @@
-﻿
+
 using SoundFlow.Enums;
 using SoundFlow.Modifiers;
 

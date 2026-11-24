@@ -1,4 +1,4 @@
-﻿using SoundFlow.Providers;
+using SoundFlow.Providers;
 
 namespace SoundFlow.Samples.EditingMixer;
 

@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using System.Buffers;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
@@ -14,7 +15,7 @@ namespace SoundFlow.Providers;
 /// <remarks>
 ///     Efficiently handles large audio files by reading and decoding audio data in manageable chunks.
 /// </remarks>
-public sealed class ChunkedDataProvider : ISoundDataProvider
+public sealed class ChunkedDataProvider : IDataProvider
 {
     private const int DefaultChunkSize = 220500; // ~5 seconds at 44.1 kHz stereo
 
@@ -36,11 +37,11 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     /// <param name="stream">The stream to read audio data from. Must be readable and seekable.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
     /// <param name="chunkSize">The number of samples per channel to read in each chunk.</param>
-    public ChunkedDataProvider(AudioEngine engine, Stream stream, ReadOptions? options = null, int chunkSize = DefaultChunkSize)
+    public ChunkedDataProvider(Engine engine, Stream stream, ReadOptions? options = null, int chunkSize = DefaultChunkSize)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         options ??= new ReadOptions();
-        
+
         var formatInfoResult = SoundMetadataReader.Read(_stream, options);
         AudioFormat discoveredFormat;
 
@@ -73,15 +74,15 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
                     : TimeSpan.Zero
             };
         }
-        
+
         _chunkSize = chunkSize > 0 ? chunkSize * discoveredFormat.Channels : throw new ArgumentOutOfRangeException(nameof(chunkSize));
         SampleFormat = _decoder.SampleFormat;
         SampleRate = _decoder.SampleRate;
         CanSeek = _stream.CanSeek;
-        
+
         FillBuffer();
     }
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="ChunkedDataProvider" /> class with a specified format.
     ///     If metadata reading fails, it will attempt to probe the stream with registered codecs.
@@ -90,15 +91,15 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="stream">The stream to read audio data from.</param>
     /// <param name="chunkSize">The number of samples to read in each chunk.</param>
-    public ChunkedDataProvider(AudioEngine engine, AudioFormat format, Stream stream, int chunkSize = DefaultChunkSize)
+    public ChunkedDataProvider(Engine engine, AudioFormat format, Stream stream, int chunkSize = DefaultChunkSize)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         _chunkSize = chunkSize > 0 ? chunkSize * format.Channels : throw new ArgumentOutOfRangeException(nameof(chunkSize));
 
         var formatInfoResult = SoundMetadataReader.Read(_stream, new ReadOptions
         {
-            ReadTags = false, 
-            ReadAlbumArt = false, 
+            ReadTags = false,
+            ReadAlbumArt = false,
             DurationAccuracy = DurationAccuracy.FastEstimate
         });
 
@@ -127,7 +128,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
         SampleFormat = _decoder.SampleFormat;
         SampleRate = _decoder.SampleRate;
         CanSeek = _stream.CanSeek;
-        
+
         FillBuffer();
     }
 
@@ -142,7 +143,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
             }
         }
     }
-    
+
     /// <inheritdoc />
     public int Length => FormatInfo != null ? (int)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
 
@@ -157,18 +158,18 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
     public SoundFormatInfo? FormatInfo { get; }
 
     /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
-    
+
     /// <inheritdoc />
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
         var samplesRead = 0;
@@ -203,7 +204,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
                     buffer[samplesRead++] = _buffer.Dequeue();
                 }
             }
-            
+
             _samplePosition += samplesRead;
             PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
         }
@@ -224,13 +225,13 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
             {
                 sampleOffset = Math.Clamp(sampleOffset, 0, maxLen);
             }
-            
+
             _decoder.Seek(sampleOffset);
-            
+
             // Clear the existing buffer
             _buffer.Clear();
             _isEndOfStream = false;
-            
+
             // Update the sample position
             _samplePosition = sampleOffset;
 

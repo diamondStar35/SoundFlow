@@ -14,7 +14,7 @@ public sealed class StreamCompletionTests
         using var engine = new HeadlessEngine(); engine.RegisterCodecFactory(new Codec());
         using var provider = new StreamDataProvider(engine, TransportTests.Mono, new MemoryStream(new byte[16]));
         var ended = 0; provider.EndOfStreamReached += (_, _) => ended++;
-        var samples = new float[4]; provider.ReadBytes(samples); provider.ReadBytes(samples);
+        var samples = new float[4]; provider.ReadSamples(samples); provider.ReadSamples(samples);
         Assert.Equal(1, ended);
     }
 

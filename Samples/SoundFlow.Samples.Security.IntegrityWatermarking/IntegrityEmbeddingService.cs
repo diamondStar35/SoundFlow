@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Providers;
@@ -20,7 +21,7 @@ public static class IntegrityEmbeddingService
     /// <param name="sourceFile">The path to the original audio file.</param>
     /// <param name="outputFile">The path to save the watermarked file.</param>
     /// <param name="config">The watermark configuration to use.</param>
-    public static async Task EmbedAsync(AudioEngine engine, string sourceFile, string outputFile, WatermarkConfiguration config)
+    public static async Task EmbedAsync(Engine engine, string sourceFile, string outputFile, WatermarkConfiguration config)
     {
         await using var stream = new FileStream(sourceFile, FileMode.Open);
         using var provider = new AssetDataProvider(engine, stream);
@@ -34,10 +35,10 @@ public static class IntegrityEmbeddingService
         var embedder = new IntegrityWatermarkEmbedModifier(config);
 
         var samples = new float[provider.Length];
-        provider.ReadBytes(samples);
+        provider.ReadSamples(samples);
 
         embedder.Process(samples, format.Channels);
-        
+
         await SaveWavAsync(engine, outputFile, samples, provider.FormatInfo);
         Console.WriteLine($"Saved watermarked file to '{outputFile}'.");
     }
@@ -45,7 +46,7 @@ public static class IntegrityEmbeddingService
     /// <summary>
     /// Saves a float array of audio samples to a WAV file.
     /// </summary>
-    private static async Task SaveWavAsync(AudioEngine engine, string filePath, float[] samples, SoundFormatInfo? formatInfo)
+    private static async Task SaveWavAsync(Engine engine, string filePath, float[] samples, SoundFormatInfo? formatInfo)
     {
         var format = new AudioFormat
         {

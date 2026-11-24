@@ -1,4 +1,5 @@
-﻿using System.Buffers;
+using SoundFlow.Providers;
+using System.Buffers;
 using System.Text;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -26,7 +27,7 @@ public static class AudioWatermarker
     /// <param name="text">The text to embed.</param>
     /// <param name="config">Configuration options.</param>
     /// <exception cref="ArgumentException">Thrown if the destination stream does not support seeking.</exception>
-    public static void EmbedOwnershipWatermark(ISoundDataProvider source, Stream destination, string text,
+    public static void EmbedOwnershipWatermark(IDataProvider source, Stream destination, string text,
         WatermarkConfiguration config)
     {
         if (!destination.CanSeek || !destination.CanWrite)
@@ -65,7 +66,7 @@ public static class AudioWatermarker
             var spanFloat = floatBuffer.AsSpan();
             while (true)
             {
-                var samplesRead = source.ReadBytes(spanFloat);
+                var samplesRead = source.ReadSamples(spanFloat);
                 if (samplesRead == 0) break;
 
                 var validSlice = spanFloat[..samplesRead];
@@ -108,7 +109,7 @@ public static class AudioWatermarker
     /// <param name="destinationPath">The output file path.</param>
     /// <param name="text">The text to embed.</param>
     /// <param name="config">Configuration options.</param>
-    public static void EmbedOwnershipWatermarkToFile(ISoundDataProvider source, string destinationPath, string text,
+    public static void EmbedOwnershipWatermarkToFile(IDataProvider source, string destinationPath, string text,
         WatermarkConfiguration config)
     {
         using var fileStream = new FileStream(destinationPath, FileMode.Create, FileAccess.Write);
@@ -135,7 +136,7 @@ public static class AudioWatermarker
     /// <summary>
     /// Attempts to extract a text payload from a watermarked audio source.
     /// </summary>
-    public static async Task<Result<string>> ExtractOwnershipWatermarkAsync(ISoundDataProvider source,
+    public static async Task<Result<string>> ExtractOwnershipWatermarkAsync(IDataProvider source,
         WatermarkConfiguration config)
     {
         var format = new AudioFormat
@@ -164,7 +165,7 @@ public static class AudioWatermarker
         {
             while (true)
             {
-                var read = source.ReadBytes(buffer);
+                var read = source.ReadSamples(buffer);
                 if (read == 0) break;
 
                 extractor.Process(buffer.AsSpan(0, read), format.Channels);

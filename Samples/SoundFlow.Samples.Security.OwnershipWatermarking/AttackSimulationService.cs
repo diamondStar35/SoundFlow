@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Providers;
@@ -18,7 +19,7 @@ public static class AttackSimulationService
     /// <param name="inputFile">The path to the watermarked audio file.</param>
     /// <param name="outputFile">The path to save the modified audio file.</param>
     /// <param name="volumeMultiplier">The factor by which to multiply the audio samples' amplitude.</param>
-    public static async Task SimulateVolumeChangeAsync(AudioEngine engine, string inputFile, string outputFile, float volumeMultiplier)
+    public static async Task SimulateVolumeChangeAsync(Engine engine, string inputFile, string outputFile, float volumeMultiplier)
     {
         Console.WriteLine($"Loading '{inputFile}', adjusting volume by {(volumeMultiplier - 1.0f) * 100:F0}%, and saving to '{outputFile}'.");
         await using var stream = new FileStream(inputFile, FileMode.Open);
@@ -26,7 +27,7 @@ public static class AttackSimulationService
 
         // Read all samples
         var samples = new float[provider.Length];
-        provider.ReadBytes(samples);
+        provider.ReadSamples(samples);
 
         // Modify volume
         for (var i = 0; i < samples.Length; i++)
@@ -44,7 +45,7 @@ public static class AttackSimulationService
     /// <summary>
     /// Saves a float array of audio samples to a WAV file.
     /// </summary>
-    private static async Task SaveWavAsync(AudioEngine engine, string filePath, float[] samples, SoundFormatInfo? formatInfo)
+    private static async Task SaveWavAsync(Engine engine, string filePath, float[] samples, SoundFormatInfo? formatInfo)
     {
         var format = new AudioFormat
         {

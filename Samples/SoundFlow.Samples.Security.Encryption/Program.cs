@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Security.Utils;
 
 namespace SoundFlow.Samples.Security.Encryption;
@@ -16,14 +16,14 @@ public static class Program
     // For a real application, this key should be managed securely (e.g., from a key vault or secure store).
     // It must be 32 bytes (256 bits).
     private static readonly byte[] SecretKey = "MySuperSecure32ByteEncryptionKey"u8.ToArray();
-    
+
     public static async Task Main()
     {
         Console.WriteLine("--- SoundFlow Content Encryption & Authentication Test ---");
         Console.WriteLine();
-        
+
         var originalFile = GetExistingFilePath("Enter path to the source audio file (e.g., original.wav):");
-        
+
         Console.Write("Enable Authenticated Encryption (Digital Signatures)? (y/N): ");
         var enableAuth = Console.ReadLine()?.Trim().Equals("y", StringComparison.OrdinalIgnoreCase) ?? false;
 
@@ -41,14 +41,14 @@ public static class Program
             publicKey = keys.PublicKeyPem;
             Console.WriteLine("Keys generated.");
         }
-        
+
         var tempDir = Path.Combine(Path.GetTempPath(), "SoundFlowSample-Encryption");
         if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true);
         Directory.CreateDirectory(tempDir);
         var encryptedFile = Path.Combine(tempDir, "encrypted.sfa");
         var decryptedFile = Path.Combine(tempDir, "decrypted.wav");
-        
-        using var engine = new MiniAudioEngine();
+
+        using var engine = new SoundFlow.Backends.MiniAudio.Engine();
         var success = true;
 
         try
@@ -95,17 +95,17 @@ public static class Program
         {
             Console.WriteLine("\n--- Final Result ---");
             Console.WriteLine(success ? "Encryption tests passed." : "Encryption tests failed.");
-            
+
             Console.WriteLine("\nCleaning up temporary files...");
             if (File.Exists(encryptedFile)) File.Delete(encryptedFile);
             if (File.Exists(encryptedFile + ".sig")) File.Delete(encryptedFile + ".sig");
             if (File.Exists(decryptedFile)) File.Delete(decryptedFile);
             if (Directory.Exists(tempDir)) Directory.Delete(tempDir);
         }
-        
+
         Console.WriteLine("Encryption sample finished.");
     }
-    
+
     /// <summary>
     /// Prompts the user for a file path and loops until a valid, existing file is provided.
     /// </summary>

@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
 using SoundFlow.Security.Stores;
@@ -17,7 +18,7 @@ public static class IndexingService
     /// <param name="engine">The audio engine for decoding.</param>
     /// <param name="store">The fingerprint store for persistence.</param>
     /// <returns>The generated Track ID for the indexed file.</returns>
-    public static async Task<string> IndexTrackAsync(string filePath, AudioEngine engine, IFingerprintStore store)
+    public static async Task<string> IndexTrackAsync(string filePath, Engine engine, IFingerprintStore store)
     {
         Console.WriteLine($"--- Indexing Track: {filePath} ---");
 

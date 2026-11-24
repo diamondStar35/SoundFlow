@@ -1,4 +1,7 @@
-﻿using SoundFlow.Abstracts;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Editing;
@@ -27,7 +30,7 @@ public static class DialogueFiles
 
 public static class SpeechBasedExamples
 {
-    private static readonly AudioEngine AudioEngine = new MiniAudioEngine();
+    private static readonly CoreEngine EngineInstance = new BackendEngine();
     private static readonly AudioFormat Format = new() { Channels = 1, SampleRate = 24000, Format = SampleFormat.F32 };
 
     public static void Run()
@@ -90,7 +93,7 @@ public static class SpeechBasedExamples
                     case 0: running = false; break;
                     default: Console.WriteLine("Invalid choice. Please try again."); break;
                 }
-                
+
                 Console.Clear();
             }
             else
@@ -99,7 +102,7 @@ public static class SpeechBasedExamples
             }
         }
 
-        AudioEngine.Dispose();
+        EngineInstance.Dispose();
         Console.WriteLine("Exited.");
     }
 
@@ -135,19 +138,19 @@ public static class SpeechBasedExamples
     private static void PlayComposition(Composition composition, string message = "Playing composition...")
     {
         Console.WriteLine(message);
-        AudioEngine.UpdateAudioDevicesInfo();
-        DeviceInfo? deviceInfo = AudioEngine.PlaybackDevices.FirstOrDefault(d => d.IsDefault);
+        EngineInstance.UpdateAudioDevicesInfo();
+        DeviceInfo? deviceInfo = EngineInstance.PlaybackDevices.FirstOrDefault(d => d.IsDefault);
         if (deviceInfo == null)
         {
             Console.WriteLine("No playback device found. Skipping playback.");
             composition.Dispose();
             return;
         }
-        
-        using var playbackDevice = AudioEngine.InitializePlaybackDevice(deviceInfo.Value, Format);
+
+        using var playbackDevice = EngineInstance.InitializePlaybackDevice(deviceInfo.Value, Format);
         playbackDevice.Start();
 
-        using var player = new SoundPlayer(AudioEngine, Format, composition.Renderer);
+        using var player = new SoundPlayer(EngineInstance, Format, composition.Renderer);
         playbackDevice.MasterMixer.AddComponent(player);
         player.Play();
 
@@ -166,7 +169,7 @@ public static class SpeechBasedExamples
             var elapsed = DateTime.Now - startTime;
             Console.Write($"\rPlayback time: {elapsed:mm\\:ss\\.fff} / {compositionDuration:mm\\:ss\\.fff}   ");
             Thread.Sleep(50);
-            if (elapsed > compositionDuration + TimeSpan.FromSeconds(1)) 
+            if (elapsed > compositionDuration + TimeSpan.FromSeconds(1))
             {
                 player.Stop(); // Ensure stop if duration is slightly off
                 break;
@@ -177,12 +180,12 @@ public static class SpeechBasedExamples
         playbackDevice.Stop();
         composition.Dispose();
     }
-    
+
     private static Composition StitchFullDialogue()
     {
-        var composition = new Composition(AudioEngine, Format, "Stitch Full Dialogue");
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var composition = new Composition(EngineInstance, Format, "Stitch Full Dialogue");
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
 
         var track = new Track("Dialogue");
         var currentTime = TimeSpan.Zero;
@@ -270,17 +273,17 @@ public static class SpeechBasedExamples
         // --- Dialogue Turn 17: Bella (02:11:804 - 02:15:374) ---
         track.AddSegment(new AudioSegment(Format, bellaProvider, DemoAudio.Ts("02:11:804"), DemoAudio.Ts("02:15:374") - DemoAudio.Ts("02:11:804"), currentTime, name: "Bella"));
         currentTime += DemoAudio.Ts("02:15:374") - DemoAudio.Ts("02:11:804");
-        
+
         Console.WriteLine($@"Playing stitched dialogue, Total Duration: {composition.Editor.CalculateTotalDuration():mm\:ss\.fff}, Calculated Duration: {currentTime:mm\:ss\.fff}");
 
         composition.Editor.AddTrack(track);
         return composition;
     }
-    
+
     private static Composition ReplaceBellaLineWithBeep()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
         var beepProvider = DemoAudio.GenerateShortBeep(TimeSpan.FromSeconds(2.67));
 
         var track = new Track("Bella's Dialogue");
@@ -307,7 +310,7 @@ public static class SpeechBasedExamples
         var bellaLine3End = DemoAudio.Ts("00:11:794");
         var bellaLine3Duration = bellaLine3End - bellaLine3Start;
         track.AddSegment(new AudioSegment(Format, bellaProvider, bellaLine3Start, bellaLine3Duration, currentTime, "Next Line"));
-            
+
         composition.Editor.AddTrack(track);
 
         Console.WriteLine($"Replacing Bella's line '{segmentToReplace.Name}' at {segmentToReplace.TimelineStartTime} with a beep.");
@@ -320,7 +323,7 @@ public static class SpeechBasedExamples
     {
         var composition = StitchFullDialogue();
         var adamTrack = composition.Tracks.FirstOrDefault(t => t.Segments.Any(s => s.Name.Equals("Adam")));
-            
+
         if (adamTrack == null)
         {
             Console.WriteLine("Adam's track not found in stitched dialogue for removal.");
@@ -370,9 +373,9 @@ public static class SpeechBasedExamples
 
     private static Composition ShortenDialogueByTrimming()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
 
         var track = new Track("Trimmed Dialogue");
         TimeSpan currentTime = TimeSpan.Zero;
@@ -399,8 +402,8 @@ public static class SpeechBasedExamples
 
     private static Composition LayerMusicUnderIntro()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
         var musicProvider = DemoAudio.GenerateMusicLoop(TimeSpan.FromSeconds(10)); // Long enough music
 
         // Bella's Intro Track
@@ -423,8 +426,8 @@ public static class SpeechBasedExamples
 
     private static Composition ReverseAdamCatchLine()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
         var track = new Track("Adam Reversed");
 
         // Adam: "What's the catch?" (01:09:206 - 01:10:046)
@@ -442,8 +445,8 @@ public static class SpeechBasedExamples
 
     private static Composition LoopBellaHugeLine()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
         var track = new Track("Bella Looped");
 
         // Bella: "Apm, this is huge!" (01:00:084 - 01:01:744)
@@ -480,10 +483,10 @@ public static class SpeechBasedExamples
 
     private static Composition MuteBellaTrackTemporarily()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
-            
+        var composition = new Composition(EngineInstance, Format);
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+
         var adamTrack = new Track("Adam");
         adamTrack.AddSegment(new AudioSegment(Format, adamProvider, DemoAudio.Ts("00:00:106"), DemoAudio.Ts("00:09:476") - DemoAudio.Ts("00:00:106"), TimeSpan.Zero));
         composition.Editor.AddTrack(adamTrack);
@@ -498,10 +501,10 @@ public static class SpeechBasedExamples
 
     private static Composition SoloAdamTrack()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
-            
+        var composition = new Composition(EngineInstance, Format);
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+
         var adamTrack = new Track("Adam (Soloed)") { Settings = { IsSoloed = true } };
         adamTrack.AddSegment(new AudioSegment(Format, adamProvider, DemoAudio.Ts("00:00:106"), DemoAudio.Ts("00:09:476") - DemoAudio.Ts("00:00:106"), TimeSpan.Zero));
         composition.Editor.AddTrack(adamTrack);
@@ -509,22 +512,22 @@ public static class SpeechBasedExamples
         var bellaTrack = new Track("Bella");
         bellaTrack.AddSegment(new AudioSegment(Format, bellaProvider, DemoAudio.Ts("00:00:094"), DemoAudio.Ts("00:08:924") - DemoAudio.Ts("00:00:094"), TimeSpan.FromSeconds(0.5)));
         composition.Editor.AddTrack(bellaTrack);
-            
+
         Console.WriteLine("Adam's track is soloed. Only Adam should be heard.");
         return composition;
     }
 
     private static Composition SpeedChangeBellaEnthusiasm()
     {
-        var composition = new Composition(AudioEngine, Format);
-        var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.BellaWavPath));
+        var composition = new Composition(EngineInstance, Format);
+        var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.BellaWavPath));
         var track = new Track("Bella Speed Change");
 
         // Bella: "The possibilities are endless." (01:50:094 - 01:51:764)
         var lineStart = DemoAudio.Ts("01:50:094");
         var lineEnd = DemoAudio.Ts("01:51:764");
         var lineDuration = lineEnd - lineStart;
-            
+
         var settings = new AudioSegmentSettings { SpeedFactor = 1.3f }; // 30% faster
         track.AddSegment(new AudioSegment(Format, bellaProvider, lineStart, lineDuration, TimeSpan.Zero, "Bella Faster", settings));
         composition.Editor.AddTrack(track);
@@ -535,8 +538,8 @@ public static class SpeechBasedExamples
 
     private static Composition TimeStretchAdamLonger()
     {
-        var composition = new Composition(AudioEngine, Format, "TimeStretchAdamLonger");
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format, "TimeStretchAdamLonger");
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
         var track = new Track("Adam Stretched (Longer)");
 
         // Original duration: 13 seconds
@@ -558,8 +561,8 @@ public static class SpeechBasedExamples
 
     private static Composition TimeCompressAdamShorter()
     {
-        var composition = new Composition(AudioEngine, Format, "TimeCompressAdamShorter");
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format, "TimeCompressAdamShorter");
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
         var track = new Track("Adam Compressed (Shorter)");
 
         // Adam: "This sounds almost too good to be true." (01:07:376 - 01:09:206 in source)
@@ -582,8 +585,8 @@ public static class SpeechBasedExamples
 
     private static Composition TimeStretchAdamByTargetDuration()
     {
-        var composition = new Composition(AudioEngine, Format, "TimeStretchTargetDuration");
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format, "TimeStretchTargetDuration");
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
         var track = new Track("Adam Stretched by Target Duration");
 
         // Adam: "Okay, Bella, you've definitely got my attention." (01:11:806 - 01:15:026 in source)
@@ -608,8 +611,8 @@ public static class SpeechBasedExamples
 
     private static Composition TimeStretchThenSpeedChange()
     {
-        var composition = new Composition(AudioEngine, Format, "StretchThenSpeed");
-        var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+        var composition = new Composition(EngineInstance, Format, "StretchThenSpeed");
+        var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
         var track = new Track("Adam Stretched then Sped Up");
 
         // Original duration: approx 6.39 seconds

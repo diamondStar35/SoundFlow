@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow", "Src/SoundFlow.csproj", "{D4326C2E-CDB3-47D4-8116-BB3872E81323}"
 EndProject
@@ -35,6 +35,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Security.Authentication", "Samples\SoundFlow.Samples.Security.Authentication\SoundFlow.Samples.Security.Authentication.csproj", "{DD934AB4-CD4F-427C-9367-3A48C1156783}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Samples.Recording", "Samples\SoundFlow.Samples.Recording\SoundFlow.Samples.Recording.csproj", "{C51F35EF-3C8F-4865-A51A-99AF616191C3}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Backends", "Backends", "{81267934-4FE5-6C83-B806-5B06E723B05C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Backends.MiniAudio", "Backends\SoundFlow.Backends.MiniAudio\SoundFlow.Backends.MiniAudio.csproj", "{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -98,6 +102,13 @@ Global
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{D4326C2E-CDB3-47D4-8116-BB3872E81323} = {7841F9AA-861F-4684-8DEC-2828FB3AE048}
@@ -114,5 +125,6 @@ Global
 		{76CA50F8-24C9-4D0C-B42B-EE839994FEAE} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{DD934AB4-CD4F-427C-9367-3A48C1156783} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3} = {BE06375D-0A93-4916-A551-9875089314CC}
+		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25} = {81267934-4FE5-6C83-B806-5B06E723B05C}
 	EndGlobalSection
 EndGlobal

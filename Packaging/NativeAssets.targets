@@ -1,0 +1,14 @@
+<Project>
+    <PropertyGroup>
+        <_SoundFlowNativeRid Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_SoundFlowNativeRid>
+        <_SoundFlowNativeRid Condition="'$(_SoundFlowNativeRid)' == ''">$(NETCoreSdkRuntimeIdentifier)</_SoundFlowNativeRid>
+    </PropertyGroup>
+    <ItemGroup>
+        <None Include="$(MSBuildProjectDirectory)/runtimes/$(_SoundFlowNativeRid)/native/**/*" Link="lib/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Pack="false" />
+        <NativeReference Include="$(MSBuildProjectDirectory)/runtimes/ios-arm64/native/*.framework" Condition="'$(TargetPlatformIdentifier)' == 'ios'">
+            <Kind>Framework</Kind>
+            <SmartLink>false</SmartLink>
+            <ForceLoad>true</ForceLoad>
+        </NativeReference>
+    </ItemGroup>
+</Project>

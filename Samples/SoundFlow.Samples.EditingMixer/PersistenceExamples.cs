@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using System.Reflection;
 using System.Text.Json;
 using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
@@ -15,7 +17,7 @@ namespace SoundFlow.Samples.EditingMixer;
 
 public static class PersistenceExamples
 {
-    private static readonly AudioEngine AudioEngine = new MiniAudioEngine();
+    private static readonly CoreEngine EngineInstance = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
     private static readonly string ProjectSaveDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SavedProjects");
     private static readonly JsonSerializerOptions SerializerOptions = new()
@@ -32,7 +34,7 @@ public static class PersistenceExamples
         Directory.CreateDirectory(ProjectSaveDirectory);
 
         if (!DialogueFiles.CheckFilesExist()) Console.WriteLine("Dialogue files missing. Some examples might not work as intended for 'Save'.");
-        
+
         var running = true;
         while (running)
         {
@@ -66,7 +68,7 @@ public static class PersistenceExamples
             }
         }
 
-        AudioEngine.Dispose();
+        EngineInstance.Dispose();
         Console.WriteLine("Exited Persistence Examples.");
     }
 
@@ -88,24 +90,24 @@ public static class PersistenceExamples
         Console.ReadKey();
         Console.Clear();
     }
-    
+
     private static void PlayComposition(Composition composition, string message = "Playing composition...")
     {
         Console.WriteLine(message);
-        if (AudioEngine.IsDisposed)
+        if (EngineInstance.IsDisposed)
         {
-            Console.WriteLine("AudioEngine not available for playback. Skipping.");
+            Console.WriteLine("SoundFlow.Engine not available for playback. Skipping.");
             composition.Dispose();
             return;
         }
 
-        AudioEngine.UpdateAudioDevicesInfo();
-        var deviceInfo = AudioEngine.PlaybackDevices.FirstOrDefault(x => x.IsDefault);
+        EngineInstance.UpdateAudioDevicesInfo();
+        var deviceInfo = EngineInstance.PlaybackDevices.FirstOrDefault(x => x.IsDefault);
 
-        using var playbackDevice = AudioEngine.InitializePlaybackDevice(deviceInfo, Format);
+        using var playbackDevice = EngineInstance.InitializePlaybackDevice(deviceInfo, Format);
         playbackDevice.Start();
 
-        using var player = new SoundPlayer(AudioEngine, Format, composition.Renderer);
+        using var player = new SoundPlayer(EngineInstance, Format, composition.Renderer);
         playbackDevice.MasterMixer.AddComponent(player);
         player.Play();
 
@@ -144,14 +146,14 @@ public static class PersistenceExamples
         var projectFilePath = Path.Combine(ProjectSaveDirectory, $"{projectName}.sfproj");
 
         Console.WriteLine($"Creating composition: {projectName}");
-        var compositionToSave = new Composition(AudioEngine, Format, projectName);
+        var compositionToSave = new Composition(EngineInstance, Format, projectName);
         var track1 = new Track("Dialogue Track");
         compositionToSave.Editor.AddTrack(track1);
 
         // Segment 1 from Adam.wav
         if (File.Exists(DialogueFiles.AdamWavPath))
         {
-            var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+            var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
             track1.AddSegment(new AudioSegment(Format, adamProvider, Ts("00:00:106"), Ts("00:05:000"), TimeSpan.Zero, "Adam Intro", ownsDataProvider: true));
         } else { Console.WriteLine("Adam.wav missing, skipping Adam segment.");}
 
@@ -161,7 +163,7 @@ public static class PersistenceExamples
         track1.AddSegment(new AudioSegment(Format, beepProvider, TimeSpan.Zero, beepDuration, Ts("00:05:000"), "Beep", ownsDataProvider: true));
 
         Console.WriteLine($"Saving project to: {projectFilePath} with media consolidation.");
-        await CompositionProjectManager.SaveProjectAsync(AudioEngine, compositionToSave, projectFilePath, new ProjectSaveOptions
+        await CompositionProjectManager.SaveProjectAsync(EngineInstance, compositionToSave, projectFilePath, new ProjectSaveOptions
         {
             ConsolidateMedia = true,
             EmbedSmallMedia = false,
@@ -170,7 +172,7 @@ public static class PersistenceExamples
         compositionToSave.Dispose(); // Dispose original composition and its providers
 
         Console.WriteLine($"\nLoading project from: {projectFilePath}");
-        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(EngineInstance, Format, projectFilePath);
 
         if (missingSources.Count != 0)
         {
@@ -194,14 +196,14 @@ public static class PersistenceExamples
         var projectFilePath = Path.Combine(ProjectSaveDirectory, $"{projectName}.sfproj");
 
         Console.WriteLine($"Creating composition: {projectName}");
-        var compositionToSave = new Composition(AudioEngine, Format, projectName);
+        var compositionToSave = new Composition(EngineInstance, Format, projectName);
         var track1 = new Track("Mixed Sources Track");
         compositionToSave.Editor.AddTrack(track1);
 
         // Segment 1 from Adam.wav
         if (File.Exists(DialogueFiles.AdamWavPath))
         {
-            var adamProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+            var adamProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
             track1.AddSegment(new AudioSegment(Format, adamProvider, Ts("00:00:106"), Ts("00:02:000"), TimeSpan.Zero, "Adam Short", ownsDataProvider: true));
         } else { Console.WriteLine("Adam.wav missing, skipping Adam segment."); }
 
@@ -209,9 +211,9 @@ public static class PersistenceExamples
         var beepDuration = TimeSpan.FromMilliseconds(500);
         var beepProvider = DemoAudio.GenerateShortBeep(beepDuration);
         track1.AddSegment(new AudioSegment(Format, beepProvider, TimeSpan.Zero, beepDuration, Ts("00:02:500"), "Embedded Beep", ownsDataProvider: true));
-        
+
         Console.WriteLine($"Saving project to: {projectFilePath} with small media embedding (no consolidation for external files).");
-        await CompositionProjectManager.SaveProjectAsync(AudioEngine, compositionToSave, projectFilePath, new ProjectSaveOptions
+        await CompositionProjectManager.SaveProjectAsync(EngineInstance, compositionToSave, projectFilePath, new ProjectSaveOptions
         {
             ConsolidateMedia = false,
             EmbedSmallMedia = true,
@@ -220,7 +222,7 @@ public static class PersistenceExamples
         compositionToSave.Dispose();
 
         Console.WriteLine($"\nLoading project from: {projectFilePath}");
-        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(EngineInstance, Format, projectFilePath);
 
         if (missingSources.Count != 0)
         {
@@ -229,7 +231,7 @@ public static class PersistenceExamples
             {
                 Console.WriteLine($" - ID: {ms.Id}, Original Path: {ms.OriginalAbsolutePath ?? "N/A"}");
             }
-            
+
             Console.WriteLine("Project loaded successfully with embedded only media.");
         }
         else
@@ -251,15 +253,15 @@ public static class PersistenceExamples
 
         // 1. Create and save a project that references Bella.wav
         Console.WriteLine("Creating a project with Bella.wav...");
-        var initialComposition = new Composition(AudioEngine, Format, projectName);
+        var initialComposition = new Composition(EngineInstance, Format, projectName);
         var track = new Track("Bella's Track");
         initialComposition.Editor.AddTrack(track);
 
         if (File.Exists(originalBellaPath))
         {
-            var bellaProvider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(originalBellaPath));
+            var bellaProvider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(originalBellaPath));
             track.AddSegment(new AudioSegment(Format, bellaProvider, Ts("00:00:094"), Ts("00:05:000"), TimeSpan.Zero, "Bella Initial", ownsDataProvider: true));
-            await CompositionProjectManager.SaveProjectAsync(AudioEngine, initialComposition, projectFilePath, new ProjectSaveOptions
+            await CompositionProjectManager.SaveProjectAsync(EngineInstance, initialComposition, projectFilePath, new ProjectSaveOptions
             {
                 ConsolidateMedia = false,
                 EmbedSmallMedia = false,
@@ -281,7 +283,7 @@ public static class PersistenceExamples
 
         // 3. Load the project - Bella.wav should be missing
         Console.WriteLine($"\nLoading project {projectFilePath} (expecting missing media)...");
-        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+        var (loadedComposition, missingSources) = await CompositionProjectManager.LoadProjectAsync(EngineInstance, Format, projectFilePath);
 
         ProjectSourceReference? bellaSourceRef = null;
         if (missingSources.Count != 0)
@@ -309,14 +311,14 @@ public static class PersistenceExamples
         {
             Console.WriteLine($"\nAttempting to relink Bella's audio. Pointing to: {movedBellaPath}");
             var projectDir = Path.GetDirectoryName(projectFilePath) ?? "";
-            
+
             var relinkSuccess = CompositionProjectManager.RelinkMissingMedia(
-                AudioEngine,
+                EngineInstance,
                 bellaSourceRef,
                 movedBellaPath,
                 projectDir
             );
-            
+
             bellaSourceRef.ResolvedDataProvider?.Dispose(); // Dispose the resolved data provider to free up resources
 
 
@@ -327,7 +329,7 @@ public static class PersistenceExamples
                 Console.WriteLine("After relinking the reference, if we were to save and reload, " +
                                   "or if the load process could use updated references, it should work.");
                 Console.WriteLine("Attempting to reload the project with the now-correct original path on the reference...");
-                
+
                 var tempProjectData = JsonSerializer.Deserialize<ProjectData>(await File.ReadAllTextAsync(projectFilePath), SerializerOptions)!;
                 var tempBellaRef = tempProjectData.SourceReferences.FirstOrDefault(sr => sr.Id == bellaSourceRef.Id);
                 if (tempBellaRef != null) tempBellaRef.OriginalAbsolutePath = movedBellaPath;
@@ -335,7 +337,7 @@ public static class PersistenceExamples
                 Console.WriteLine("Temporarily updated project file to point to new location for demonstration.");
 
 
-                var (relinkedComposition, newMissing) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+                var (relinkedComposition, newMissing) = await CompositionProjectManager.LoadProjectAsync(EngineInstance, Format, projectFilePath);
                 if (newMissing.All(ms => ms.Id != bellaSourceRef.Id))
                 {
                      Console.WriteLine("Bella's audio relinked successfully on reload!");
@@ -345,7 +347,7 @@ public static class PersistenceExamples
                 {
                     Console.WriteLine("Relink failed to reflect on reload.");
                 }
-                
+
                 relinkedComposition.Dispose();
             }
             else
@@ -353,7 +355,7 @@ public static class PersistenceExamples
                 Console.WriteLine("Relink process failed for Bella's audio.");
             }
         }
-        
+
         // 6. Clean up: Move Bella.wav back
         if (File.Exists(movedBellaPath))
         {
@@ -367,7 +369,7 @@ public static class PersistenceExamples
     private static Task DemonstrateDirtyFlag()
     {
         Console.WriteLine("Creating a new composition...");
-        var composition = new Composition(AudioEngine, Format, "DirtyTestComp");
+        var composition = new Composition(EngineInstance, Format, "DirtyTestComp");
         Console.WriteLine($"IsDirty initially: {composition.IsDirty}"); // Expected: false
 
         composition.MasterVolume = 0.8f; // This should call MarkDirty
@@ -379,7 +381,7 @@ public static class PersistenceExamples
 
         if (File.Exists(DialogueFiles.AdamWavPath))
         {
-            var provider = new StreamDataProvider(AudioEngine, Format, File.OpenRead(DialogueFiles.AdamWavPath));
+            var provider = new StreamDataProvider(EngineInstance, Format, File.OpenRead(DialogueFiles.AdamWavPath));
             var segment = new AudioSegment(Format, provider, TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.Zero, ownsDataProvider: true);
             track.AddSegment(segment); // AddSegment on Track should propagate MarkDirty
             Console.WriteLine($"After adding a segment, IsDirty: {composition.IsDirty}"); // Expected: true
@@ -407,12 +409,12 @@ public static class PersistenceExamples
 
         Console.WriteLine("Generating ECDSA key pair for project signing...");
         var keys = SignatureKeyGenerator.Generate();
-        
+
         Console.WriteLine($"Creating composition: {projectName}");
-        var composition = new Composition(AudioEngine, Format, projectName);
+        var composition = new Composition(EngineInstance, Format, projectName);
         var track = new Track("Secure Track");
         composition.Editor.AddTrack(track);
-        
+
         // Add dummy segment
         var beepDuration = TimeSpan.FromSeconds(1.0);
         var beepProvider = DemoAudio.GenerateShortBeep(beepDuration);
@@ -420,7 +422,7 @@ public static class PersistenceExamples
 
         // Save with signing
         Console.WriteLine($"Saving and signing project to: {projectFilePath}");
-        await CompositionProjectManager.SaveProjectAsync(AudioEngine, composition, projectFilePath, new ProjectSaveOptions
+        await CompositionProjectManager.SaveProjectAsync(EngineInstance, composition, projectFilePath, new ProjectSaveOptions
         {
             SigningConfiguration = new SignatureConfiguration { PrivateKeyPem = keys.PrivateKeyPem }
         });
@@ -434,9 +436,9 @@ public static class PersistenceExamples
         if (verifyResult is { IsSuccess: true, Value: true })
         {
             Console.WriteLine("SUCCESS: Project verification passed. The file is authentic.");
-            
+
             // Proceed to load
-            var (loadedComposition, _) = await CompositionProjectManager.LoadProjectAsync(AudioEngine, Format, projectFilePath);
+            var (loadedComposition, _) = await CompositionProjectManager.LoadProjectAsync(EngineInstance, Format, projectFilePath);
             Console.WriteLine("Project loaded successfully.");
             loadedComposition.Dispose();
         }
@@ -453,10 +455,10 @@ public static class PersistenceExamples
 
         Console.WriteLine($"Generating ECDSA key pair...");
         var keys = SignatureKeyGenerator.Generate();
-        
+
         Console.WriteLine($"Creating and saving valid project: {projectName}");
-        var composition = new Composition(AudioEngine, Format, projectName);
-        await CompositionProjectManager.SaveProjectAsync(AudioEngine, composition, projectFilePath, new ProjectSaveOptions
+        var composition = new Composition(EngineInstance, Format, projectName);
+        await CompositionProjectManager.SaveProjectAsync(EngineInstance, composition, projectFilePath, new ProjectSaveOptions
         {
             SigningConfiguration = new SignatureConfiguration { PrivateKeyPem = keys.PrivateKeyPem }
         });
@@ -466,7 +468,7 @@ public static class PersistenceExamples
         Console.WriteLine("Simulating tampering: Modifying project file content...");
         var originalContent = await File.ReadAllTextAsync(projectFilePath);
         // Replace something benign but structurally valid to ensure it's not just a JSON parse error, but a signature mismatch.
-        var tamperedContent = originalContent.Replace(projectName, "HackedProjectName"); 
+        var tamperedContent = originalContent.Replace(projectName, "HackedProjectName");
         await File.WriteAllTextAsync(projectFilePath, tamperedContent);
 
         // Verify

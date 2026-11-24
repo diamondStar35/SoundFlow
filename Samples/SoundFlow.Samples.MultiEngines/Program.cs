@@ -1,5 +1,10 @@
-﻿using SoundFlow.Abstracts;
-using SoundFlow.Abstracts.Devices;
+using SoundFlow.Playback;
+using CaptureDevice = SoundFlow.Devices.CaptureDevice;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using PlaybackDevice = SoundFlow.Devices.PlaybackDevice;
+using SoundFlow.Abstracts;
+using SoundFlow.Devices;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Enums;
@@ -14,7 +19,7 @@ namespace SoundFlow.Samples.MultiEngines;
 /// </summary>
 internal static class Program
 {
-    private static readonly AudioEngine Engine = new MiniAudioEngine();
+    private static readonly CoreEngine Engine = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
     private static readonly string RecordingDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Recordings");
 
@@ -90,8 +95,8 @@ internal static class Program
             return;
         }
 
-        var playbackDevices = new List<AudioPlaybackDevice>();
-        var soundPlayers = new List<ISoundPlayer>();
+        var playbackDevices = new List<PlaybackDevice>();
+        var soundPlayers = new List<IPlayer>();
 
         try
         {
@@ -110,7 +115,7 @@ internal static class Program
                 player.Play();
                 Console.WriteLine($"Started playback on: {device.Info?.Name}");
             }
-            
+
             if (soundPlayers.Any())
             {
                 Console.WriteLine($"\nPlaying audio on {playbackDevices.Count} device(s).");
@@ -130,7 +135,7 @@ internal static class Program
 
     private static void RecordFromMultipleAndPlayback()
     {
-        Console.WriteLine("Select one or more microphones to record from.");
+        Console.WriteLine("Select one or more microphones to record ");
         var selectedCaptureDevices = SelectMultipleDevices(DeviceType.Capture);
         if (selectedCaptureDevices.Count == 0)
         {
@@ -138,7 +143,7 @@ internal static class Program
             return;
         }
 
-        var captureDevices = new List<AudioCaptureDevice>();
+        var captureDevices = new List<CaptureDevice>();
         var recorders = new List<Recorder>();
         var streams = new List<FileStream>();
         var recordedFiles = new List<string>();
@@ -148,15 +153,15 @@ internal static class Program
             foreach (var (devInfo, i) in selectedCaptureDevices.Select((dev, i) => (dev, i)))
             {
                 // Correctly initialize each capture device.
-                var device = Engine.InitializeCaptureDevice(devInfo, Format); 
+                var device = Engine.InitializeCaptureDevice(devInfo, Format);
                 captureDevices.Add(device);
 
                 var filePath = Path.Combine(RecordingDirectory, $"record_{i}_{SanitizeFileName(devInfo.Name)}.wav");
                 recordedFiles.Add(filePath);
-                
+
                 var stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read);
                 streams.Add(stream);
-                
+
                 var recorder = new Recorder(device, stream);
                 recorders.Add(recorder);
             }
@@ -181,7 +186,7 @@ internal static class Program
         recordedFiles.ForEach(Console.WriteLine);
         Console.WriteLine("Press 'p' to play back all recorded files sequentially, or any other key to skip.");
         if (Console.ReadKey(true).Key != ConsoleKey.P) return;
-        
+
         PlayMultipleFilesSequentially(recordedFiles);
     }
 
@@ -194,7 +199,7 @@ internal static class Program
         Console.WriteLine("\nNow, select one or more devices for playback.");
         var selectedPlaybackDevices = SelectMultipleDevices(DeviceType.Playback);
         if (selectedPlaybackDevices.Count == 0) return;
-        
+
         var captureDevices = selectedCaptureDevices.Select(d => Engine.InitializeCaptureDevice(d, Format)).ToList();
         var playbackDevices = selectedPlaybackDevices.Select(d => Engine.InitializePlaybackDevice(d, Format)).ToList();
         var allComponents = new List<IDisposable>();
@@ -213,7 +218,7 @@ internal static class Program
                 {
                     var provider = new MicrophoneDataProvider(captureDevice);
                     allComponents.Add(provider);
-                    
+
                     var player = new SoundPlayer(Engine, Format, provider);
                     allComponents.Add(player);
 
@@ -238,9 +243,9 @@ internal static class Program
             playbackDevices.ForEach(d => { d.Stop(); d.Dispose(); });
         }
     }
-    
+
     #endregion
-    
+
     #region UI and Playback Helpers
 
     private static void PlayMultipleFilesSequentially(List<string> files)
@@ -250,7 +255,7 @@ internal static class Program
         Console.WriteLine("\nSelect devices for sequential playback.");
         var selectedPlaybackDevices = SelectMultipleDevices(DeviceType.Playback);
         if (selectedPlaybackDevices.Count == 0) return;
-        
+
         var playbackDevices = selectedPlaybackDevices.Select(d => Engine.InitializePlaybackDevice(d, Format)).ToList();
         try
         {
@@ -259,25 +264,25 @@ internal static class Program
             foreach (var file in files)
             {
                 if (!File.Exists(file)) continue;
-                
+
                 Console.WriteLine($"\nNow playing: {Path.GetFileName(file)}");
-                
+
                 SoundPlayer player = null!;
-                
+
                 // Route this single player to all selected output devices
                 playbackDevices.ForEach(d =>
                 {
                     // Create a single player and provider for this file
                     using var provider = new StreamDataProvider(Engine, Format, new FileStream(file, FileMode.Open, FileAccess.Read));
                     player = new SoundPlayer(Engine, Format, provider);
-                    
+
                     d.MasterMixer.AddComponent(player);
                     player.Play();
-                    
+
                 });
-                
+
                 PlaybackControls([player]); // Control this single player
-                
+
                 // Clean up the player from all mixers before the next loop iteration
                 playbackDevices.ForEach(d => d.MasterMixer.RemoveComponent(player));
             }
@@ -287,14 +292,14 @@ internal static class Program
             playbackDevices.ForEach(d => { d.Stop(); d.Dispose(); });
         }
     }
-    
+
     private static List<DeviceInfo> SelectMultipleDevices(DeviceType type)
     {
         var selectedDevices = new List<DeviceInfo>();
         while (true)
         {
             Console.Clear();
-            Engine.UpdateDevicesInfo();
+            Engine.UpdateAudioDevicesInfo();
             var availableDevices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
             if (availableDevices.Length == 0)
@@ -320,7 +325,7 @@ internal static class Program
             Console.WriteLine("  's' - Continue with selected devices");
             Console.WriteLine("  'x' - Cancel");
             Console.Write("\nEnter your choice: ");
-            
+
             var keyChar = Console.ReadKey(true).KeyChar;
             switch (char.ToLower(keyChar))
             {
@@ -346,14 +351,14 @@ internal static class Program
         }
     }
 
-    private static void PlaybackControls(IReadOnlyList<ISoundPlayer> players)
+    private static void PlaybackControls(IReadOnlyList<IPlayer> players)
     {
         if (players.Count == 0) return;
         var firstPlayer = players[0];
 
         Console.WriteLine("\n--- Playback Controls (affects all players) ---");
         Console.WriteLine("'P': Play/Pause | 'S': Seek | Any other: Stop");
-        
+
         using var timer = new System.Timers.Timer(250);
         timer.AutoReset = true;
         timer.Elapsed += (_, _) =>
@@ -372,7 +377,7 @@ internal static class Program
                 Thread.Sleep(50);
                 continue;
             }
-            
+
             var keyInfo = Console.ReadKey(true);
             switch (keyInfo.Key)
             {

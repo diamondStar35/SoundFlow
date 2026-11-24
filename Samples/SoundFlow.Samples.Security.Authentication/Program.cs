@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Samples.Security.Authentication;
+namespace SoundFlow.Samples.Security.Authentication;
 
 /// <summary>
 /// This sample program demonstrates ECDSA-P384 file signing and verification.
@@ -34,7 +34,7 @@ public static class Program
             await VerificationService.VerifyFileAsync(inputPath, publicKey);
 
             // Phase 5: Verification (Tampered)
-            await TamperingService.TamperAndVerifyAsync(inputPath, 
+            await TamperingService.TamperAndVerifyAsync(inputPath,
                 () => VerificationService.VerifyFileAsync(inputPath, publicKey));
 
         }
@@ -44,7 +44,7 @@ public static class Program
             Console.WriteLine($"\nA critical, unhandled error occurred: {ex.Message}");
             Console.ResetColor();
         }
-        
+
         Console.WriteLine("\n=== End of Sample ===");
     }
 }

@@ -11,7 +11,7 @@ namespace SoundFlow.Providers;
 ///     Provides audio data from a raw PCM stream or a raw float array.
 ///     This provider is designed for sources that directly contain raw PCM bytes or float samples without any encoding headers.
 /// </summary>
-public class RawDataProvider : ISoundDataProvider
+public class RawDataProvider : IDataProvider
 {
     private readonly Stream? _pcmStream;
     private readonly float[]? _floatData;
@@ -20,7 +20,7 @@ public class RawDataProvider : ISoundDataProvider
     private readonly short[]? _shortData;
     private readonly SampleFormat _sampleFormat;
     private int _position;
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw float array.
     /// </summary>
@@ -33,7 +33,7 @@ public class RawDataProvider : ISoundDataProvider
         _sampleFormat = SampleFormat.F32;
         SampleRate = sampleRate;
     }
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw PCM stream.
     /// </summary>
@@ -45,11 +45,11 @@ public class RawDataProvider : ISoundDataProvider
     public RawDataProvider(Stream pcmStream, SampleFormat sampleFormat, int sampleRate = 48000)
     {
         _pcmStream = pcmStream ?? throw new ArgumentNullException(nameof(pcmStream));
-        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
+        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat
             : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a stream.", nameof(sampleFormat));
         SampleRate = sampleRate;
     }
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw byte array.
     /// </summary>
@@ -61,11 +61,11 @@ public class RawDataProvider : ISoundDataProvider
     public RawDataProvider(byte[] rawBytes, SampleFormat sampleFormat, int sampleRate = 48000)
     {
         _byteArray = rawBytes ?? throw new ArgumentNullException(nameof(rawBytes));
-        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat 
+        _sampleFormat = sampleFormat != SampleFormat.Unknown ? sampleFormat
             : throw new ArgumentException("SampleFormat cannot be Unknown for RawDataProvider when using a byte array.", nameof(sampleFormat));
         SampleRate = sampleRate;
     }
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw int array.
     /// </summary>
@@ -78,7 +78,7 @@ public class RawDataProvider : ISoundDataProvider
         _sampleFormat = SampleFormat.S32;
         SampleRate = sampleRate;
     }
-    
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw short array.
     /// </summary>
@@ -91,7 +91,7 @@ public class RawDataProvider : ISoundDataProvider
         _sampleFormat = SampleFormat.S16;
         SampleRate = sampleRate;
     }
-    
+
 
     /// <inheritdoc />
     public int Position => _position;
@@ -110,7 +110,7 @@ public class RawDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     public bool IsDisposed { get; private set; }
-    
+
     /// <inheritdoc />
     public SoundFormatInfo? FormatInfo { get; init; }
 
@@ -122,7 +122,7 @@ public class RawDataProvider : ISoundDataProvider
 
     /// <inheritdoc />
     /// <exception cref="ObjectDisposedException">Thrown if the provider has been disposed.</exception>
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
 
@@ -170,7 +170,7 @@ public class RawDataProvider : ISoundDataProvider
     public void Dispose()
     {
         if (IsDisposed) return;
-        
+
         _pcmStream?.Dispose();
         IsDisposed = true;
         GC.SuppressFinalize(this);
@@ -191,7 +191,7 @@ public class RawDataProvider : ISoundDataProvider
         {
             return _pcmStream.CanSeek ? (int)(_pcmStream.Length / _sampleFormat.GetBytesPerSample()) : -1;
         }
-        
+
         return GetArrayLength();
     }
 
@@ -201,9 +201,9 @@ public class RawDataProvider : ISoundDataProvider
     /// <returns>Number of samples in the current array source</returns>
     private int GetArrayLength()
     {
-        return _floatData?.Length ?? 
-               _byteArray?.Length / _sampleFormat.GetBytesPerSample() ?? 
-               _intArray?.Length ?? 
+        return _floatData?.Length ??
+               _byteArray?.Length / _sampleFormat.GetBytesPerSample() ??
+               _intArray?.Length ??
                _shortData?.Length ?? 0;
     }
 
@@ -227,13 +227,13 @@ public class RawDataProvider : ISoundDataProvider
             var bytesPerSample = _sampleFormat.GetBytesPerSample();
             var byteOffset = _position * bytesPerSample;
             var bytesToRead = Math.Min(buffer.Length * bytesPerSample, _byteArray.Length - byteOffset);
-            
+
             if (bytesToRead <= 0) return 0;
-            
+
             ConvertBytesToFloat(_byteArray.AsSpan(byteOffset, bytesToRead), buffer[..(bytesToRead / bytesPerSample)], _sampleFormat);
             return bytesToRead / bytesPerSample;
         }
-        
+
         return 0;
     }
 
@@ -247,14 +247,14 @@ public class RawDataProvider : ISoundDataProvider
         var bytesPerSample = _sampleFormat.GetBytesPerSample();
         var bytesToRead = buffer.Length * bytesPerSample;
         var rentedBuffer = ArrayPool<byte>.Shared.Rent(bytesToRead);
-        
+
         try
         {
             var byteBuffer = rentedBuffer.AsSpan(0, bytesToRead);
             var bytesActuallyRead = _pcmStream!.Read(byteBuffer);
-            
+
             if (bytesActuallyRead == 0) return 0;
-            
+
             var samplesActuallyRead = bytesActuallyRead / bytesPerSample;
             ConvertBytesToFloat(byteBuffer[..bytesActuallyRead], buffer[..samplesActuallyRead], _sampleFormat);
             return samplesActuallyRead;
@@ -277,14 +277,14 @@ public class RawDataProvider : ISoundDataProvider
     {
         var remainingSamples = source.Length - _position;
         var samplesActuallyRead = Math.Min(buffer.Length, remainingSamples);
-        
+
         if (samplesActuallyRead <= 0) return 0;
-        
+
         for (var i = 0; i < samplesActuallyRead; i++)
         {
             buffer[i] = convertAction(source[_position + i]);
         }
-        
+
         return samplesActuallyRead;
     }
 
@@ -328,7 +328,7 @@ public class RawDataProvider : ISoundDataProvider
                 for (var i = 0; i < sampleCount; i++)
                 {
                     var byteIndex = i * 3;
-                    floatBuffer[i] = byteIndex + 2 < byteBuffer.Length ? 
+                    floatBuffer[i] = byteIndex + 2 < byteBuffer.Length ?
                         Convert24BitToFloat(byteBuffer, byteIndex) : 0;
                 }
                 break;

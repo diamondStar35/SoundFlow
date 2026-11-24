@@ -1,4 +1,4 @@
-﻿namespace SoundFlow.Samples.Security.IntegrityWatermarking;
+namespace SoundFlow.Samples.Security.IntegrityWatermarking;
 
 /// <summary>
 /// Provides methods to simulate tampering with audio files.
@@ -15,7 +15,7 @@ public static class TamperingService
     {
         Console.WriteLine($"Creating tampered file '{outputFile}' by zeroing out a data block...");
         var fileBytes = File.ReadAllBytes(inputFile);
-        
+
         // Find a point roughly in the middle of the data chunk to tamper with.
         // We start after the standard WAV header (44 bytes) to avoid corrupting the format itself.
         const int wavHeaderSize = 44;
@@ -28,7 +28,7 @@ public static class TamperingService
             Console.ResetColor();
             return;
         }
-        
+
         var tamperPoint = wavHeaderSize + (fileBytes.Length - wavHeaderSize) / 2;
         const int tamperLength = 1024; // Zero out 1KB of data
 
@@ -40,7 +40,7 @@ public static class TamperingService
                 fileBytes[index] = 0;
             }
         }
-        
+
         File.WriteAllBytes(outputFile, fileBytes);
         Console.ForegroundColor = ConsoleColor.Yellow;
         Console.WriteLine("Tampering complete.");

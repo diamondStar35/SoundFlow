@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using SoundFlow.Interfaces;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Providers;
@@ -36,7 +36,7 @@ public static class WatermarkTuner
     /// recommended parameters. If no suitable configuration is found, returns a safe default.
     /// </returns>
     public static async Task<WatermarkConfiguration> TuneConfigurationAsync(
-        ISoundDataProvider source,
+        IDataProvider source,
         string payload,
         string secretKey,
         bool applySafetyMargin = false)
@@ -53,9 +53,9 @@ public static class WatermarkTuner
             // 1. Calculate required duration for the watermark at the current spread factor.
             var payloadBytes = Encoding.UTF8.GetByteCount(payload);
             // The total bits include CRC16 (16), payload length (32), and the payload itself.
-            var totalBits = 16 + 32 + (payloadBytes * 8); 
+            var totalBits = 16 + 32 + (payloadBytes * 8);
             var framesNeeded = totalBits * spread;
-            
+
             // Add a 5-second buffer to prevent the watermark from ending abruptly at the file's edge.
             var bufferFrames = (int)(source.SampleRate * 5.0);
             var totalFramesNeeded = framesNeeded + bufferFrames;
@@ -71,10 +71,10 @@ public static class WatermarkTuner
 
             // 2. Identify strategic locations in the audio file to test embedding.
             var candidates = GetCandidateOffsets(source, totalFramesNeeded, channels);
-            
+
             // 3. Test various strength levels at each candidate location.
             const float startStrength = 0.02f;
-            const float maxStrength = 0.12f; 
+            const float maxStrength = 0.12f;
             const float step = 0.02f;
 
             for (var s = startStrength; s <= maxStrength + 0.001f; s += step)
@@ -90,10 +90,10 @@ public static class WatermarkTuner
                 {
                     var sliceSamples = ReadSlice(source, startFrame, totalFramesNeeded);
                     var watermarkedSlice = EmbedToMemory(sliceSamples, source.FormatInfo, payload, config);
-                    
+
                     // Simulate a volume reduction attack to test watermark resilience.
                     ApplyVolumeAttack(watermarkedSlice, 0.75f);
-                    
+
                     var result = await ExtractFromMemory(watermarkedSlice, source.FormatInfo, config);
 
                     if (result.IsSuccess && result.Value == payload)
@@ -109,7 +109,7 @@ public static class WatermarkTuner
                                 _ => 1.1f
                             };
                         }
-                        
+
                         var finalStrength = (float)Math.Round(s * margin, 3);
                         if (finalStrength > 0.14f) finalStrength = 0.14f;
 
@@ -139,7 +139,7 @@ public static class WatermarkTuner
     /// <param name="frameCount">The total number of frames the watermark requires.</param>
     /// <param name="channels">The number of audio channels.</param>
     /// <returns>A list of integer offsets, each representing a starting frame index.</returns>
-    private static List<int> GetCandidateOffsets(ISoundDataProvider source, int frameCount, int channels)
+    private static List<int> GetCandidateOffsets(IDataProvider source, int frameCount, int channels)
     {
         var results = new List<int>();
         var fileLengthFrames = source.Length / channels;
@@ -172,7 +172,7 @@ public static class WatermarkTuner
     /// <param name="frameCount">The size of the slice to evaluate, in frames.</param>
     /// <param name="channels">The number of audio channels.</param>
     /// <returns>The starting frame index of the "densest" slice, or -1 if none could be determined.</returns>
-    private static int FindDenseAudioSlice(ISoundDataProvider source, int frameCount, int channels)
+    private static int FindDenseAudioSlice(IDataProvider source, int frameCount, int channels)
     {
         var fileLengthFrames = source.Length / channels;
         var validRegion = fileLengthFrames - frameCount;
@@ -181,7 +181,7 @@ public static class WatermarkTuner
         var bestStart = -1;
         var minSilenceCount = int.MaxValue;
         const float silenceThreshold = 0.003f;
-        
+
         const int candidatesToCheck = 5;
         var candidateStride = validRegion / candidatesToCheck;
         if (candidateStride == 0) candidateStride = 1;
@@ -191,11 +191,11 @@ public static class WatermarkTuner
         for (var i = 0; i < validRegion; i += candidateStride)
         {
             if(source.CanSeek) source.Seek(i * channels);
-            var read = source.ReadBytes(buffer);
+            var read = source.ReadSamples(buffer);
             if (read < buffer.Length) break;
 
             var silenceCount = 0;
-            for (var k = 0; k < read; k += 200) 
+            for (var k = 0; k < read; k += 200)
             {
                 if (Math.Abs(buffer[k]) < silenceThreshold) silenceCount++;
             }
@@ -208,7 +208,7 @@ public static class WatermarkTuner
                 if (minSilenceCount == 0) break;
             }
         }
-        
+
         return bestStart;
     }
 
@@ -219,16 +219,16 @@ public static class WatermarkTuner
     /// <param name="startFrameIndex">The frame index to start reading from.</param>
     /// <param name="frameCount">The number of frames to read.</param>
     /// <returns>A float array containing the requested audio samples.</returns>
-    private static float[] ReadSlice(ISoundDataProvider source, int startFrameIndex, int frameCount)
+    private static float[] ReadSlice(IDataProvider source, int startFrameIndex, int frameCount)
     {
         var channels = source.FormatInfo?.ChannelCount ?? 1;
         var absoluteSampleOffset = startFrameIndex * channels;
-        
+
         if (source.CanSeek) source.Seek(absoluteSampleOffset);
 
         var totalSamplesToRead = frameCount * channels;
         var buffer = new float[totalSamplesToRead];
-        var samplesRead = source.ReadBytes(buffer);
+        var samplesRead = source.ReadSamples(buffer);
 
         // Return a potentially smaller array if the read operation hit the end of the stream.
         return samplesRead < buffer.Length ? buffer.AsSpan(0, samplesRead).ToArray() : buffer;
@@ -249,27 +249,27 @@ public static class WatermarkTuner
             FormatInfo = info
         };
         using var memoryStream = new MemoryStream();
-        
+
         // 1. Write watermarked WAV to MemoryStream
         AudioWatermarker.EmbedOwnershipWatermark(sourceProvider, memoryStream, text, config);
-        
+
         // 2. Read back as raw float samples
         const int headerSize = 44; // AudioWatermarker uses a deterministic writer: 44 bytes header.
-        
+
         if (memoryStream.Length <= headerSize) return [];
 
         var dataLengthBytes = memoryStream.Length - headerSize;
         var floatCount = dataLengthBytes / sizeof(float);
         var resultBuffer = new float[floatCount];
-        
+
         memoryStream.Position = headerSize;
-        
+
         // Read directly into byte buffer then block copy to float[]
         var byteBuffer = new byte[dataLengthBytes];
         var read = memoryStream.Read(byteBuffer, 0, (int)dataLengthBytes);
-        
+
         Buffer.BlockCopy(byteBuffer, 0, resultBuffer, 0, read);
-        
+
         return resultBuffer;
     }
 

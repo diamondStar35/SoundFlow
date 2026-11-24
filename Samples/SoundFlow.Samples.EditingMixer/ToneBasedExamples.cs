@@ -1,4 +1,7 @@
-﻿using SoundFlow.Abstracts;
+using CoreEngine = SoundFlow.Engine;
+using BackendEngine = SoundFlow.Backends.MiniAudio.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Components;
 using SoundFlow.Editing;
@@ -10,7 +13,7 @@ namespace SoundFlow.Samples.EditingMixer;
 
 public static class ToneBasedExamples
 {
-    private static readonly AudioEngine AudioEngine = new MiniAudioEngine();
+    private static readonly CoreEngine EngineInstance = new BackendEngine();
     private static readonly AudioFormat Format = AudioFormat.DvdHq;
 
     internal static void Run()
@@ -18,7 +21,7 @@ public static class ToneBasedExamples
         Console.WriteLine("SoundFlow Editing Module Examples");
         Console.WriteLine("=================================");
         Console.WriteLine("Using internally generated audio sounds.");
-        
+
         var running = true;
         while (running)
         {
@@ -45,7 +48,7 @@ public static class ToneBasedExamples
             Console.WriteLine("20. Render Composition to float[] (and play)");
             Console.WriteLine(" 0. Exit");
             Console.Write("Enter your choice: ");
-            
+
             if (int.TryParse(Console.ReadLine(), out var choice))
             {
                 switch (choice)
@@ -80,7 +83,7 @@ public static class ToneBasedExamples
             }
         }
 
-        AudioEngine.Dispose();
+        EngineInstance.Dispose();
         Console.WriteLine("Exited.");
     }
 
@@ -107,8 +110,8 @@ public static class ToneBasedExamples
     private static void PlayComposition(Composition composition, string message = "Playing composition...")
     {
         Console.WriteLine(message);
-        AudioEngine.UpdateAudioDevicesInfo();
-        DeviceInfo? deviceInfo = AudioEngine.PlaybackDevices.FirstOrDefault(d => d.IsDefault);
+        EngineInstance.UpdateAudioDevicesInfo();
+        DeviceInfo? deviceInfo = EngineInstance.PlaybackDevices.FirstOrDefault(d => d.IsDefault);
         if (!deviceInfo.HasValue)
         {
             Console.WriteLine("No default playback device found. Cannot play audio.");
@@ -116,10 +119,10 @@ public static class ToneBasedExamples
             return;
         }
 
-        using var playbackDevice = AudioEngine.InitializePlaybackDevice(deviceInfo.Value, composition.Format);
+        using var playbackDevice = EngineInstance.InitializePlaybackDevice(deviceInfo.Value, composition.Format);
         playbackDevice.Start();
 
-        using var player = new SoundPlayer(AudioEngine, composition.Format, composition.Renderer);
+        using var player = new SoundPlayer(EngineInstance, composition.Format, composition.Renderer);
         playbackDevice.MasterMixer.AddComponent(player);
         player.Play();
 
@@ -138,7 +141,7 @@ public static class ToneBasedExamples
             var elapsed = DateTime.Now - startTime;
             Console.Write($"\rPlayback time: {elapsed:mm\\:ss\\.f} / {compositionDuration:mm\\:ss\\.f}   ");
             Thread.Sleep(100);
-            if (elapsed > compositionDuration + TimeSpan.FromSeconds(1)) 
+            if (elapsed > compositionDuration + TimeSpan.FromSeconds(1))
             {
                 break;
             }
@@ -154,7 +157,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateShortBeep(TimeSpan.FromSeconds(3));
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
         var segment1 = new AudioSegment(Format, provider, TimeSpan.Zero, TimeSpan.FromSeconds(3), TimeSpan.Zero, ownsDataProvider: true);
         track1.AddSegment(segment1);
@@ -167,7 +170,7 @@ public static class ToneBasedExamples
         var originalProvider = DemoAudio.GenerateLongTone();
         var replacementProvider = DemoAudio.GenerateShortBeep(TimeSpan.FromSeconds(1));
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         track1.AddSegment(new AudioSegment(Format, originalProvider, TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.Zero, "Part 1"));
@@ -186,7 +189,7 @@ public static class ToneBasedExamples
             segmentToReplaceTimelineStart + segmentToReplaceDuration,
             replacementProvider,
             TimeSpan.Zero,
-            segmentToReplaceDuration); 
+            segmentToReplaceDuration);
 
         if (!replaced) Console.WriteLine("Replacement failed. Segment not found.");
 
@@ -197,7 +200,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var seg1 = new AudioSegment(Format, provider, TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.Zero, "Part 1");
@@ -214,7 +217,7 @@ public static class ToneBasedExamples
         track1.RemoveSegment(segToRemove, shiftSubsequent: true);
         Console.WriteLine($"Duration after removal: {composition.Editor.CalculateTotalDuration()}");
 
-        composition = new Composition(AudioEngine, Format);
+        composition = new Composition(EngineInstance, Format);
         track1 = new Track("Track 1");
         var p1 = DemoAudio.GenerateLongTone();
         var p2 = DemoAudio.GenerateLongTone();
@@ -236,7 +239,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateSpeechFragment();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         track1.AddSegment(new AudioSegment(Format, provider, TimeSpan.Zero, TimeSpan.FromSeconds(5), TimeSpan.Zero, "Speech", ownsDataProvider: true));
@@ -253,7 +256,7 @@ public static class ToneBasedExamples
         var mainProvider = DemoAudio.GenerateSpeechFragment();
         var insertProvider = DemoAudio.GenerateShortBeep(TimeSpan.FromSeconds(0.5));
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var part1 = new AudioSegment(Format, mainProvider, TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.Zero, "Speech Part 1");
@@ -275,7 +278,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var trimmedSegment = new AudioSegment(Format, provider,
@@ -293,7 +296,7 @@ public static class ToneBasedExamples
 
     private static Composition DuplicateSegmentExample()
     {
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var originalSegment = new AudioSegment(Format, DemoAudio.GenerateFxSound(), TimeSpan.Zero, TimeSpan.FromSeconds(1), TimeSpan.Zero, "FX Original", ownsDataProvider: true);
@@ -315,7 +318,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateSpeechFragment();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var segmentSettings = new AudioSegmentSettings { IsReversed = true };
@@ -331,7 +334,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateMusicLoop();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var segmentSettings = new AudioSegmentSettings { Loop = new LoopSettings(repetitions: 2) };
@@ -347,7 +350,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateMusicLoop();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var segmentSettings = new AudioSegmentSettings { Loop = new LoopSettings(repetitions: int.MaxValue, targetDuration: TimeSpan.FromSeconds(7)) };
@@ -364,7 +367,7 @@ public static class ToneBasedExamples
         var speechProvider = DemoAudio.GenerateSpeechFragment();
         var musicProvider = DemoAudio.GenerateMusicLoop();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
 
         var speechTrack = new Track("Speech Track");
         var speechSegment = new AudioSegment(Format, speechProvider, TimeSpan.Zero, TimeSpan.FromSeconds(5), TimeSpan.Zero, "Narrator", ownsDataProvider: true);
@@ -385,7 +388,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format) { MasterVolume = 0.8f };
+        var composition = new Composition(EngineInstance, Format) { MasterVolume = 0.8f };
 
         var track1 = new Track("Track 1") { Settings = { Volume = 0.9f } };
 
@@ -407,7 +410,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1 Left") { Settings = { Pan = -0.8f } };
 
         var seg1Settings = new AudioSegmentSettings { Pan = 0.0f };
@@ -429,7 +432,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var segmentSettings = new AudioSegmentSettings
@@ -452,7 +455,7 @@ public static class ToneBasedExamples
         var speechProvider = DemoAudio.GenerateSpeechFragment();
         var musicProvider = DemoAudio.GenerateMusicLoop();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
 
         var speechTrack = new Track("Speech Track (Will be Muted)") { Settings = { IsMuted = true } };
         speechTrack.AddSegment(new AudioSegment(Format, speechProvider, TimeSpan.Zero, TimeSpan.FromSeconds(4), TimeSpan.Zero, "Muted Speech", ownsDataProvider: true));
@@ -472,7 +475,7 @@ public static class ToneBasedExamples
         var musicProvider = DemoAudio.GenerateMusicLoop();
         var fxProvider = DemoAudio.GenerateFxSound();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
 
         var speechTrack = new Track("Speech Track");
         speechTrack.AddSegment(new AudioSegment(Format, speechProvider, TimeSpan.Zero, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(0.5), "Speech", ownsDataProvider: true));
@@ -494,7 +497,7 @@ public static class ToneBasedExamples
     {
         var provider = DemoAudio.GenerateShortBeep();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var segment = new AudioSegment(Format, provider, TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.Zero, "Original Position", ownsDataProvider: true);
@@ -510,7 +513,7 @@ public static class ToneBasedExamples
 
     private static Composition SpeedChangeExample()
     {
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
 
         var normalSpeedSettings = new AudioSegmentSettings { SpeedFactor = 1.0f };
@@ -535,7 +538,7 @@ public static class ToneBasedExamples
         var provider1 = DemoAudio.GenerateShortBeep();
         var provider2 = DemoAudio.GenerateLongTone();
 
-        var composition = new Composition(AudioEngine, Format);
+        var composition = new Composition(EngineInstance, Format);
         var track1 = new Track("Track 1");
         track1.AddSegment(new AudioSegment(Format, provider1, TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.Zero, ownsDataProvider: true));
         track1.AddSegment(new AudioSegment(Format, provider2, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(2.5), ownsDataProvider: true));
@@ -570,14 +573,14 @@ public static class ToneBasedExamples
 
         Console.WriteLine("Playing rendered audio from float[] buffer:");
         var renderedProvider = new RawDataProvider(renderedAudio);
-        var playRenderedComposition = new Composition(AudioEngine, composition.Format);
+        var playRenderedComposition = new Composition(EngineInstance, composition.Format);
         var track = new Track("Rendered Track");
         track.AddSegment(new AudioSegment(composition.Format, renderedProvider, TimeSpan.Zero, durationToRender, TimeSpan.Zero, ownsDataProvider: true));
         composition.Editor.AddTrack(track);
 
         // Dispose the original composition since we are now playing the rendered version
         composition.Dispose();
-        
+
         return playRenderedComposition;
     }
 }

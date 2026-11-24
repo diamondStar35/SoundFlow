@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security.Analyzers;
 using SoundFlow.Security.Configuration;
@@ -18,11 +19,11 @@ public static class IntegrityVerificationService
     /// <param name="filePath">The path to the file to verify.</param>
     /// <param name="config">The watermark configuration used for embedding.</param>
     /// <returns>True if the file is intact; false if an integrity violation is detected.</returns>
-    public static bool VerifyFileIntegrity(AudioEngine engine, string filePath, WatermarkConfiguration config)
+    public static bool VerifyFileIntegrity(Engine engine, string filePath, WatermarkConfiguration config)
     {
         Console.WriteLine($"Verifying integrity of '{filePath}'...");
         using var stream = new FileStream(filePath, FileMode.Open);
-        using var provider = new AssetDataProvider(engine, stream);        
+        using var provider = new AssetDataProvider(engine, stream);
         var format = new AudioFormat { SampleRate = provider.SampleRate, Channels = provider.FormatInfo?.ChannelCount ?? 2 };
 
         var verifier = new IntegrityWatermarkVerifyAnalyzer(format, config);
@@ -37,16 +38,16 @@ public static class IntegrityVerificationService
         var buffer = new float[16384]; // 16KB buffer
         while (true)
         {
-            var read = provider.ReadBytes(buffer);
+            var read = provider.ReadSamples(buffer);
             if (read == 0) break;
-            
+
             // The verifier needs a span of the actual data read
             verifier.Process(buffer.AsSpan(0, read), format.Channels);
-            
+
             // Stop checking immediately after the first failure for efficiency
             if (violationDetected) break;
         }
-        
+
         return !violationDetected;
     }
 }

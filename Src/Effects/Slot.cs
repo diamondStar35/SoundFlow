@@ -1,5 +1,5 @@
-using PlaybackDevice = SoundFlow.Abstracts.Devices.AudioPlaybackDevice;
-using SoundFlow.Abstracts.Devices;
+using PlaybackDevice = SoundFlow.Devices.PlaybackDevice;
+using SoundFlow.Devices;
 
 namespace SoundFlow.Effects;
 

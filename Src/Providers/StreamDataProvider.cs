@@ -1,4 +1,4 @@
-using Engine = SoundFlow.Abstracts.AudioEngine;
+using Engine = SoundFlow.Engine;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -12,7 +12,7 @@ namespace SoundFlow.Providers;
 /// <summary>
 ///     Provides audio data from a stream.
 /// </summary>
-public sealed class StreamDataProvider : ISoundDataProvider
+public sealed class StreamDataProvider : IDataProvider
 {
     private readonly ISoundDecoder _decoder;
     private readonly Stream _stream;
@@ -196,7 +196,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed) return 0;
         var count = _decoder.Decode(buffer);

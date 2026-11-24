@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using SoundFlow.Abstracts;
 using SoundFlow.Structs;
 
@@ -44,13 +45,13 @@ public class Oscillator : SoundComponent
         /// </summary>
         Pulse
     }
-    
+
     /// <summary>
     /// Initializes a new instance of the <see cref="Oscillator"/> class, which generates audio waveforms at a specified frequency and amplitude.
     /// </summary>
     /// <param name="engine">The parent audio engine.</param>
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
-    public Oscillator(AudioEngine engine, AudioFormat format) : base(engine, format) 
+    public Oscillator(Engine engine, AudioFormat format) : base(engine, format)
     {
         Frequency = 440f; // A4 Note
     }
@@ -137,7 +138,7 @@ public class Oscillator : SoundComponent
         }
 
         float sampleValue;
-        
+
         // Use normalized phase (0 to 1) and increment for PolyBLEP calculations
         var normalizedPhase = effectivePhase / (2.0f * MathF.PI);
         var normalizedIncrement = _phaseIncrement / (2.0f * MathF.PI);
@@ -147,7 +148,7 @@ public class Oscillator : SoundComponent
             case WaveformType.Sine:
                 sampleValue = MathF.Sin(effectivePhase);
                 break;
-            
+
             case WaveformType.Sawtooth:
                 // Naive sawtooth is (2.0 * phase) - 1.0
                 sampleValue = (2.0f * normalizedPhase) - 1.0f;
@@ -173,7 +174,7 @@ public class Oscillator : SoundComponent
 
                 sampleValue = s1 - s2;
                 break;
-            
+
             case WaveformType.Triangle:
                 // Naive triangle wave, aliasing is less of an issue than with saw/square
                 sampleValue = 2.0f * MathF.Abs(2.0f * normalizedPhase - 1.0f) - 1.0f;
@@ -187,7 +188,7 @@ public class Oscillator : SoundComponent
                 sampleValue = 0f;
                 break;
         }
-        
+
         // Update the internal phase for the next sample and keep it within the [0, 2*PI) range.
         _currentPhase += _phaseIncrement;
         while (_currentPhase >= 2.0f * MathF.PI)

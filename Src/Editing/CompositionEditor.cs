@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Interfaces;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Providers;
@@ -13,14 +14,14 @@ namespace SoundFlow.Editing;
 public sealed class CompositionEditor : IDisposable
 {
     private readonly Composition _composition;
-    private readonly AudioEngine _engine;
+    private readonly Engine _engine;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="CompositionEditor"/> class.
     /// </summary>
     /// <param name="composition">The composition instance to be edited.</param>
     /// <param name="engine">The audio engine context required for operations like file loading.</param>
-    internal CompositionEditor(Composition composition, AudioEngine engine)
+    internal CompositionEditor(Composition composition, Engine engine)
     {
         _composition = composition;
         _engine = engine;
@@ -72,7 +73,7 @@ public sealed class CompositionEditor : IDisposable
 
         return segment;
     }
-    
+
     /// <summary>
     /// Adds a <see cref="Track"/> to the composition.
     /// </summary>
@@ -85,7 +86,7 @@ public sealed class CompositionEditor : IDisposable
         _composition.RegisterMappableObject(track.Settings);
         _composition.MarkDirty();
     }
-    
+
     /// <summary>
     /// Adds a <see cref="MidiTrack"/> to the composition.
     /// </summary>
@@ -174,7 +175,7 @@ public sealed class CompositionEditor : IDisposable
         }
         return false;
     }
-    
+
     /// <summary>
     /// Sets the MIDI resolution for the composition. This should typically be set
     /// on a new or empty project, as changing it later does not automatically scale existing MIDI data.
@@ -187,7 +188,7 @@ public sealed class CompositionEditor : IDisposable
         _composition.TicksPerQuarterNote = ticksPerQuarterNote;
         _composition.MarkDirty();
     }
-    
+
     /// <summary>
     /// Asynchronously exports the composition's MIDI data to a Standard MIDI File.
     /// </summary>
@@ -196,7 +197,7 @@ public sealed class CompositionEditor : IDisposable
     {
         return MidiExporter.ExportAsync(_composition, filePath);
     }
-    
+
     /// <summary>
     /// Calculates the total duration of the composition, determined by the end time of the longest audio or MIDI track.
     /// </summary>
@@ -208,7 +209,7 @@ public sealed class CompositionEditor : IDisposable
 
         return audioDuration > midiDuration ? audioDuration : midiDuration;
     }
-    
+
     /// <summary>
     /// Disposes of all <see cref="AudioSegment"/>s across all tracks that own their sound data providers.
     /// </summary>
@@ -219,7 +220,7 @@ public sealed class CompositionEditor : IDisposable
             segment.Dispose();
         }
     }
-    
+
     /// <summary>
     /// Replaces the source audio content of an existing <see cref="AudioSegment"/> on a track.
     /// The original segment's source data provider will be disposed if it was owned by the segment.
@@ -231,7 +232,7 @@ public sealed class CompositionEditor : IDisposable
     /// <param name="replacementSourceStartTime">The new starting time offset within the <paramref name="replacementSource"/>.</param>
     /// <param name="replacementSourceDuration">The new duration of the audio to read from the <paramref name="replacementSource"/>.</param>
     /// <returns>True if the segment was found and its source replaced, false otherwise.</returns>
-    public bool ReplaceSegment(Track track, TimeSpan originalStartTime, TimeSpan originalEndTime, ISoundDataProvider replacementSource, TimeSpan replacementSourceStartTime, TimeSpan replacementSourceDuration)
+    public bool ReplaceSegment(Track track, TimeSpan originalStartTime, TimeSpan originalEndTime, IDataProvider replacementSource, TimeSpan replacementSourceStartTime, TimeSpan replacementSourceDuration)
     {
         var segmentToReplace = track.Segments.FirstOrDefault(s => s.TimelineStartTime == originalStartTime && s.TimelineEndTime == originalEndTime);
         if (segmentToReplace == null) return false;
@@ -256,7 +257,7 @@ public sealed class CompositionEditor : IDisposable
         if (removed) _composition.MarkDirty();
         return removed;
     }
-        
+
     /// <summary>
     /// Removes an <see cref="AudioSegment"/> from a track identified by its timeline start and end times.
     /// </summary>
@@ -274,7 +275,7 @@ public sealed class CompositionEditor : IDisposable
         if (removed) _composition.MarkDirty();
         return removed;
     }
-    
+
     /// <summary>
     /// Silences a specified time range on a given track by manipulating existing segments
     /// and inserting a new silent segment.
@@ -302,8 +303,8 @@ public sealed class CompositionEditor : IDisposable
 
         // Create the explicit silent segment that will fill the silenced range
         var silentSamplesCount = (int)(rangeDuration.TotalSeconds * _composition.SampleRate * _composition.TargetChannels);
-        silentSamplesCount = Math.Max(0, silentSamplesCount); 
-        
+        silentSamplesCount = Math.Max(0, silentSamplesCount);
+
         // Create a RawDataProvider with silence (all zeros) for the new segment
         var silentDataProvider = new RawDataProvider(new float[silentSamplesCount]);
         var mainSilentSegment = new AudioSegment(
@@ -347,7 +348,7 @@ public sealed class CompositionEditor : IDisposable
                 // Before silence, Modify the original segment
                 var part1TimelineDuration = rangeStartTime - segmentTimelineStart;
                 var part1SourceDuration = TimeSpan.FromTicks((long)(part1TimelineDuration.Ticks * segment.Settings.SpeedFactor));
-                
+
                 // After silence, Create a new segment
                 var part3TimelineStart = rangeEndTime;
                 var part3OriginalTimelineOffset = rangeEndTime - segmentTimelineStart; // Offset from original segment's start on timeline
@@ -379,7 +380,7 @@ public sealed class CompositionEditor : IDisposable
             {
                 var newTimelineDuration = rangeStartTime - segmentTimelineStart;
                 var newSourceDuration = TimeSpan.FromTicks((long)(newTimelineDuration.Ticks * segment.Settings.SpeedFactor));
-                
+
                 if (newSourceDuration <= TimeSpan.Zero)
                 {
                     track.Segments.Remove(segment);
@@ -416,7 +417,7 @@ public sealed class CompositionEditor : IDisposable
         {
             track.AddSegment(newSeg);
         }
-        
+
         track.AddSegment(mainSilentSegment);
 
         _composition.MarkDirty();
@@ -438,7 +439,7 @@ public sealed class CompositionEditor : IDisposable
         track.InsertSegmentAt(segmentToInsert, insertionPoint, shiftFollowing);
         _composition.MarkDirty();
     }
-    
+
     #region MIDI Editing
 
     /// <summary>
@@ -509,7 +510,7 @@ public sealed class CompositionEditor : IDisposable
         }
         return segment.Sequence.ControlChangeEvents.TryGetValue(controllerNumber, out var points) ? points : [];
     }
-    
+
     /// <summary>
     /// Adds a new automation control point to a MIDI segment.
     /// </summary>
@@ -523,7 +524,7 @@ public sealed class CompositionEditor : IDisposable
         segment.Sequence.AddControlPoint(controllerNumber, tick, value);
         segment.MarkDirty();
     }
-    
+
     /// <summary>
     /// Applies a collection of modifications to control points within a MIDI segment.
     /// </summary>
@@ -537,7 +538,7 @@ public sealed class CompositionEditor : IDisposable
         segment.Sequence.ModifyControlPoints(controllerNumber, modifications);
         segment.MarkDirty();
     }
-    
+
     /// <summary>
     /// Removes a collection of control points from a MIDI segment.
     /// </summary>
@@ -564,10 +565,10 @@ public sealed class CompositionEditor : IDisposable
 
         var modifications = MidiQuantizer.CalculateQuantization(segment.Sequence.Notes, settings, segment.Sequence.TicksPerQuarterNote);
         segment.Sequence.ModifyNotes(modifications);
-        
+
         segment.MarkDirty();
     }
-    
+
     /// <summary>
     /// Splits a MIDI segment into two at a specified timeline position.
     /// </summary>
@@ -592,7 +593,7 @@ public sealed class CompositionEditor : IDisposable
         _composition.MarkDirty();
         return (seg1, seg2);
     }
-    
+
     /// <summary>
     /// Joins a collection of MIDI segments on a track into a single new segment.
     /// The segments must be on the same track. They will be sorted by time before joining.
@@ -613,23 +614,23 @@ public sealed class CompositionEditor : IDisposable
         {
             var relativeTimeOffset = segment.TimelineStartTime - referenceTime;
             var tickOffset = MidiTimeConverter.GetTickForTimeSpan(
-                relativeTimeOffset, 
-                _composition.TicksPerQuarterNote, 
+                relativeTimeOffset,
+                _composition.TicksPerQuarterNote,
                 _composition.TempoTrack);
 
             sequencesWithTickOffsets.Add((tickOffset, segment.Sequence));
         }
 
         var joinedSequence = MidiSequence.Join(sequencesWithTickOffsets);
-        
+
         var newSegment = new MidiSegment(joinedSequence, referenceTime, "Joined Segment");
-        
+
         foreach (var segment in orderedSegments)
         {
             track.RemoveSegment(segment);
         }
         track.AddSegment(newSegment);
-        
+
         _composition.MarkDirty();
         return newSegment;
     }

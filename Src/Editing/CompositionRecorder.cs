@@ -1,4 +1,4 @@
-﻿using SoundFlow.Metadata.Midi;
+using SoundFlow.Metadata.Midi;
 using SoundFlow.Midi;
 using SoundFlow.Midi.Devices;
 using SoundFlow.Midi.Enums;
@@ -70,12 +70,12 @@ public sealed class CompositionRecorder : IDisposable
     {
         _composition = composition;
     }
-    
+
     /// <summary>
     /// Arms a MIDI track for recording from a specific input device.
     /// </summary>
     /// <param name="track">The MIDI track to arm.</param>
-    /// <param name="inputDevice">The MIDI input device to record from.</param>
+    /// <param name="inputDevice">The MIDI input device to record </param>
     public void ArmTrackForRecording(MidiTrack track, MidiInputDevice inputDevice)
     {
         if (_armedTracks.TryGetValue(track, out var existingState))
@@ -85,7 +85,7 @@ public sealed class CompositionRecorder : IDisposable
         var recorder = new MidiRecorder(inputDevice);
         _armedTracks[track] = new ArmedTrackState(track, recorder);
     }
-    
+
     /// <summary>
     /// Disarms a MIDI track, stopping any active recording on it.
     /// </summary>
@@ -96,13 +96,13 @@ public sealed class CompositionRecorder : IDisposable
         state.Recorder.Dispose();
         _armedTracks.Remove(track);
     }
-    
+
     /// <summary>
     /// Pre-arms the recorder. If a <see cref="PunchInTime"/> is set, it will wait until that time to start. Otherwise, it starts immediately.
     /// </summary>
     /// <param name="startTime">The time on the composition timeline where recording begins if not using punch-in.</param>
     /// <param name="mode">The recording mode to use (e.g., create new segment or overdub).</param>
-    /// <param name="targetSegment">For overdub/merge mode, the segment to record into. Ignored for normal mode.</param>
+    /// <param name="targetSegment">For overdub/merge mode, the segment to record  Ignored for normal mode.</param>
     public void StartRecording(TimeSpan startTime, RecordingMode mode = RecordingMode.Normal, MidiSegment? targetSegment = null)
     {
         foreach (var state in _armedTracks.Values)
@@ -112,8 +112,8 @@ public sealed class CompositionRecorder : IDisposable
             state.LoopSampleOffset = 0; // Reset loop offset at the start of each recording.
 
             // Detach any previous handler to avoid duplicates & Attach it only for the current session.
-            state.Recorder.RecordingStopped -= OnRecordingStopped; 
-            state.Recorder.RecordingStopped += OnRecordingStopped; 
+            state.Recorder.RecordingStopped -= OnRecordingStopped;
+            state.Recorder.RecordingStopped += OnRecordingStopped;
         }
 
         if (PunchInTime > startTime)
@@ -139,7 +139,7 @@ public sealed class CompositionRecorder : IDisposable
     {
         var armedState = _armedTracks.Values.FirstOrDefault(s => s.Recorder == recorder);
         if (armedState == null) return;
-        
+
         // Find the start time for the new segment.
         var startTime = armedState.Recorder.StartTime;
 
@@ -162,7 +162,7 @@ public sealed class CompositionRecorder : IDisposable
                     case MidiCommand.NoteOn when ce.Message.Velocity > 0:
                         openNotes[key] = (timedEvent.AbsoluteTimeTicks, ce.Message.Velocity);
                         break;
-                    
+
                     case MidiCommand.NoteOff:
                     case MidiCommand.NoteOn when ce.Message.Velocity == 0:
                         if (openNotes.Remove(key, out var noteStart))
@@ -174,11 +174,11 @@ public sealed class CompositionRecorder : IDisposable
                             }
                         }
                         break;
-                        
+
                     case MidiCommand.ControlChange:
                         target.Sequence.AddControlPoint(ce.Message.ControllerNumber, absoluteTickWithOffset, ce.Message.ControllerValue);
                         break;
-                        
+
                     case MidiCommand.PitchBend:
                         target.Sequence.AddControlPoint(-1, absoluteTickWithOffset, ce.Message.PitchBendValue);
                         break;

@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Providers;
 using SoundFlow.Security;
 using SoundFlow.Security.Configuration;
@@ -18,7 +19,7 @@ public static class WatermarkEmbeddingService
     /// <param name="outputFile">The path to save the watermarked audio file.</param>
     /// <param name="secretMessage">The secret message to embed.</param>
     /// <param name="config">The watermark configuration to use.</param>
-    public static async Task EmbedAsync(AudioEngine engine, string sourceFile, string outputFile, string secretMessage, WatermarkConfiguration config)
+    public static async Task EmbedAsync(Engine engine, string sourceFile, string outputFile, string secretMessage, WatermarkConfiguration config)
     {
         await using var stream = new FileStream(sourceFile, FileMode.Open);
         using var provider = new AssetDataProvider(engine, stream);

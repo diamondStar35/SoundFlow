@@ -1,4 +1,5 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Abstracts;
 using SoundFlow.Midi.Devices;
 using SoundFlow.Midi.Structs;
 
@@ -14,8 +15,8 @@ public interface IMidiBackend : IDisposable
     /// This allows the backend to subscribe to engine lifecycle events for features like synchronization.
     /// </summary>
     /// <param name="engine">The parent audio engine instance.</param>
-    void Initialize(AudioEngine engine);
-    
+    void Initialize(Engine engine);
+
     /// <summary>
     /// Creates a MIDI input device instance for the specified device.
     /// </summary>
@@ -29,7 +30,7 @@ public interface IMidiBackend : IDisposable
     /// <param name="deviceInfo">The informational struct for the device to create.</param>
     /// <returns>An initialized <see cref="MidiOutputDevice"/>.</returns>
     MidiOutputDevice CreateMidiOutputDevice(MidiDeviceInfo deviceInfo);
-    
+
     /// <summary>
     /// Retrieves the list of available MIDI input and output devices from the backend.
     /// </summary>

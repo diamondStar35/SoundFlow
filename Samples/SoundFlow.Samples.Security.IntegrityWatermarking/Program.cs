@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Security.Configuration;
 
 namespace SoundFlow.Samples.Security.IntegrityWatermarking;
@@ -24,7 +24,7 @@ public static class Program
         var watermarkedFile = Path.Combine(tempDir, "integrity-watermarked.wav");
         var tamperedFile = Path.Combine(tempDir, "integrity-tampered.wav");
 
-        using var engine = new MiniAudioEngine();
+        using var engine = new SoundFlow.Backends.MiniAudio.Engine();
         var config = new WatermarkConfiguration { IntegrityBlockSize = 8192 };
         var success = true;
 

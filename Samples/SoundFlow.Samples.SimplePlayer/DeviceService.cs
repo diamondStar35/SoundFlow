@@ -1,4 +1,6 @@
-﻿using SoundFlow.Abstracts;
+using Engine = SoundFlow.Engine;
+using SoundFlow.Devices;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Structs;
 
@@ -15,7 +17,7 @@ public static class DeviceService
     /// <param name="engine">The audio engine instance to query for devices.</param>
     /// <param name="type">The type of device to select (Playback or Capture).</param>
     /// <returns>The selected device information, or null if no device is found or selected.</returns>
-    public static DeviceInfo? SelectDevice(AudioEngine engine, DeviceType type)
+    public static DeviceInfo? SelectDevice(Engine engine, DeviceType type)
     {
         engine.UpdateAudioDevicesInfo();
         var devices = type == DeviceType.Playback ? engine.PlaybackDevices : engine.CaptureDevices;

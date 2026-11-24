@@ -1,4 +1,4 @@
-﻿using SoundFlow.Security.Utils;
+using SoundFlow.Security.Utils;
 
 namespace SoundFlow.Samples.Security.Authentication;
 
@@ -44,10 +44,10 @@ public static class KeyManagementService
     {
         Console.WriteLine("Generating new ECDSA-P384 Key Pair...");
         var keys = SignatureKeyGenerator.Generate();
-        
+
         File.WriteAllText(privPath, keys.PrivateKeyPem);
         File.WriteAllText(pubPath, keys.PublicKeyPem);
-        
+
         Console.WriteLine($"Keys saved to {Path.GetDirectoryName(privPath)}");
     }
 }

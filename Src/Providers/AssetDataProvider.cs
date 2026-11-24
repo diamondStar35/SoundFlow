@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Engine;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -14,7 +15,7 @@ namespace SoundFlow.Providers;
 ///     Provides audio data from a file or stream.
 /// </summary>
 /// <remarks>Loads full audio directly to memory.</remarks>
-public sealed class AssetDataProvider : ISoundDataProvider
+public sealed class AssetDataProvider : IDataProvider
 {
     private float[]? _data;
     private int _samplePosition;
@@ -26,7 +27,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="filePath">The absolute or relative path to the audio file.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
-    public AssetDataProvider(AudioEngine engine, string filePath, ReadOptions? options = null)
+    public AssetDataProvider(Engine engine, string filePath, ReadOptions? options = null)
     {
         using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
         Initialize(engine, stream, options ?? new ReadOptions(), null);
@@ -39,7 +40,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="stream">The stream to read audio data from.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
-    public AssetDataProvider(AudioEngine engine, Stream stream, ReadOptions? options = null)
+    public AssetDataProvider(Engine engine, Stream stream, ReadOptions? options = null)
     {
         Initialize(engine, stream, options ?? new ReadOptions(), null);
     }
@@ -51,7 +52,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="format">The audio format containing channels and sample rate and sample format</param>
     /// <param name="stream">The stream to read audio data from.</param>
-    public AssetDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
+    public AssetDataProvider(Engine engine, AudioFormat format, Stream stream)
     {
         var options = new ReadOptions
         {
@@ -68,12 +69,12 @@ public sealed class AssetDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="data">The byte array containing the audio file data.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
-    public AssetDataProvider(AudioEngine engine, byte[] data, ReadOptions? options = null)
+    public AssetDataProvider(Engine engine, byte[] data, ReadOptions? options = null)
         : this(engine, new MemoryStream(data), options)
     {
     }
 
-    private void Initialize(AudioEngine engine, Stream stream, ReadOptions options, AudioFormat? explicitFormat)
+    private void Initialize(Engine engine, Stream stream, ReadOptions options, AudioFormat? explicitFormat)
     {
         var formatInfoResult = SoundMetadataReader.Read(stream, options);
         ISoundDecoder decoder;
@@ -84,7 +85,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
         if (formatInfoResult is { IsSuccess: true, Value: not null })
         {
             FormatInfo = formatInfoResult.Value;
-            
+
             // If explicit format is provided, use it; otherwise, derive from metadata
             var targetFormat = explicitFormat ?? new AudioFormat
             {
@@ -109,7 +110,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
                 SampleRate = explicitFormat?.SampleRate ?? 0,
                 Duration = TimeSpan.Zero
             };
-            
+
             // Refine FormatInfo based on actual decoder properties if probe succeeded
             if (decoder is { Channels: > 0, SampleRate: > 0 })
             {
@@ -164,7 +165,7 @@ public sealed class AssetDataProvider : ISoundDataProvider
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     /// <inheritdoc />
-    public int ReadBytes(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer)
     {
         if (IsDisposed || _data is null) return 0;
 

@@ -1,4 +1,4 @@
-﻿using SoundFlow.Backends.MiniAudio;
+using SoundFlow.Backends.MiniAudio;
 using SoundFlow.Security.Stores;
 
 // This sample program demonstrates the core workflow of the Audio Fingerprinting system.
@@ -21,8 +21,8 @@ public static class Program
         var queryClipFile = GetExistingFilePath("Enter the path to the short audio clip you want to identify (e.g., clip.wav):");
         Console.WriteLine();
 
-        // The AudioEngine is required for decoding audio files.
-        using var engine = new MiniAudioEngine();
+        // The SoundFlow.Engine is required for decoding audio files.
+        using var engine = new SoundFlow.Backends.MiniAudio.Engine();
 
         // For this example, we use an in-memory store. In a real application,
         // you would implement IFingerprintStore to connect to a persistent database.
