@@ -3,6 +3,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>enable</ImplicitUsings>
     <RollForward>Major</RollForward>
   </PropertyGroup>
@@ -11,5 +12,9 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" PrivateAssets="all" />
     <ProjectReference Include="../../Src/SoundFlow.csproj" />
+    <ProjectReference Include="../../Backends/SoundFlow.Backends.OpenAL/SoundFlow.Backends.OpenAL.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\BackendContract\BackendContract.csproj" />
   </ItemGroup>
 </Project>
