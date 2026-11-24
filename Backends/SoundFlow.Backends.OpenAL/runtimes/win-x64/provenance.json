@@ -1,0 +1,8 @@
+{
+  "version": "1.25.2",
+  "repository": "https://github.com/kcat/openal-soft",
+  "commit": "b2c48f7718ef3fcf67921a8b6534c4914e328970",
+  "rid": "win-x64",
+  "origin": "OpenAL Soft 1.25.2 official Windows binary distribution, bin/Win64/soft_oal.dll",
+  "sha256": "3963b06e319180700be0bcc0d027336664bb3a4975876b4a5442f10746fab5b4"
+}

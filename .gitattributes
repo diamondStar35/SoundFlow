@@ -1,0 +1,3 @@
+# Preserve vendored license text and the significant context prefixes in native patches.
+Backends/SoundFlow.Backends.OpenAL/Notices/** -whitespace
+Native/openal-soft-patches/*.patch -whitespace
