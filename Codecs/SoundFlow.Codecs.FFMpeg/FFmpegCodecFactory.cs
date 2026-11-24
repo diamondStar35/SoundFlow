@@ -1,4 +1,4 @@
-﻿using SoundFlow.Abstracts;
+using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
@@ -65,7 +65,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         if (format.Channels > 0 && format.SampleRate > 0
             && (decoder.Channels != format.Channels || decoder.SampleRate != format.SampleRate))
         {
-            return new FormatConvertingDecoder(decoder, format.Channels, format.SampleRate);
+            return new SoundFlow.Playback.PcmFormatConvertingDecoder(decoder, format.Channels, format.SampleRate);
         }
 
         return decoder;
@@ -94,7 +94,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
                 && hintFormat.Value.SampleRate > 0
                 && (decoder.Channels != hintFormat.Value.Channels || decoder.SampleRate != hintFormat.Value.SampleRate))
             {
-                return new FormatConvertingDecoder(decoder, hintFormat.Value.Channels, hintFormat.Value.SampleRate);
+                return new SoundFlow.Playback.PcmFormatConvertingDecoder(decoder, hintFormat.Value.Channels, hintFormat.Value.SampleRate);
             }
 
             return decoder;

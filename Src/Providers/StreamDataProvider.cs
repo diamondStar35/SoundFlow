@@ -1,3 +1,4 @@
+using Engine = SoundFlow.Abstracts.AudioEngine;
 using SoundFlow.Abstracts;
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
@@ -21,14 +22,14 @@ public sealed class StreamDataProvider : ISoundDataProvider
     ///     It first attempts to read metadata; if that fails, it falls back to probing the stream with all available codecs.
     /// </summary>
     /// <param name="engine">The audio engine instance.</param>
-    /// <param name="stream">The stream to read audio data from. Must be readable and seekable.</param>
+    /// <param name="stream">Readable input stream. Nonseekable input requires a codec that can probe it without rewinding.</param>
     /// <param name="options">Optional configuration for metadata reading.</param>
-    public StreamDataProvider(AudioEngine engine, Stream stream, ReadOptions? options = null)
+    public StreamDataProvider(Engine engine, Stream stream, ReadOptions? options = null)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
         options ??= new ReadOptions();
 
-        var formatInfoResult = SoundMetadataReader.Read(_stream, options);
+        var formatInfoResult = _stream.CanSeek ? SoundMetadataReader.Read(_stream, options) : default;
 
         if (formatInfoResult is { IsSuccess: true, Value: not null })
         {
@@ -42,13 +43,13 @@ public sealed class StreamDataProvider : ISoundDataProvider
                 SampleRate = FormatInfo.SampleRate
             };
 
-            _stream.Position = 0;
+            if (_stream.CanSeek) _stream.Position = 0;
             _decoder = engine.CreateDecoder(_stream, FormatInfo.FormatIdentifier, discoveredFormat);
         }
         else
         {
             // Path 2: Metadata read failed. Fall back to probing with codecs.
-            _stream.Position = 0;
+            if (_stream.CanSeek) _stream.Position = 0;
             _decoder = engine.CreateDecoder(_stream, out var detectedFormat);
 
             // Create a basic FormatInfo from what the decoder found.
@@ -65,7 +66,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
         }
 
         SampleRate = _decoder.SampleRate;
-        _decoder.EndOfStreamReached += EndOfStreamReached;
+        _decoder.EndOfStreamReached += ForwardDecoderEnd;
     }
 
     /// <summary>
@@ -74,28 +75,28 @@ public sealed class StreamDataProvider : ISoundDataProvider
     /// <param name="engine">The audio engine instance.</param>
     /// <param name="format">The audio format.</param>
     /// <param name="stream">The stream to read audio data from.</param>
-    public StreamDataProvider(AudioEngine engine, AudioFormat format, Stream stream)
+    public StreamDataProvider(Engine engine, AudioFormat format, Stream stream)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
 
-        var formatInfoResult = SoundMetadataReader.Read(_stream, new ReadOptions
+        var formatInfoResult = _stream.CanSeek ? SoundMetadataReader.Read(_stream, new ReadOptions
         {
             ReadTags = false,
             ReadAlbumArt = false,
             DurationAccuracy = DurationAccuracy.FastEstimate
-        });
+        }) : default;
 
         if (formatInfoResult is { IsSuccess: true, Value: not null })
         {
             // Path 1: Metadata read successfully. Use the discovered formatId with the user's target format.
             FormatInfo = formatInfoResult.Value;
-            _stream.Position = 0;
+            if (_stream.CanSeek) _stream.Position = 0;
             _decoder = engine.CreateDecoder(stream, FormatInfo.FormatIdentifier, format);
         }
         else
         {
             // Path 2: Metadata read failed. Fall back to probing, providing the user's format as a hint.
-            _stream.Position = 0;
+            if (_stream.CanSeek) _stream.Position = 0;
             _decoder = engine.CreateDecoder(_stream, out var detectedFormat, format);
 
             // Create a basic FormatInfo from what the decoder found.
@@ -113,8 +114,10 @@ public sealed class StreamDataProvider : ISoundDataProvider
 
         SampleRate = _decoder.SampleRate;
 
-        _decoder.EndOfStreamReached += EndOfStreamReached;
+        _decoder.EndOfStreamReached += ForwardDecoderEnd;
     }
+
+    private void ForwardDecoderEnd(object? sender, EventArgs args) => EndOfStreamReached?.Invoke(this, args);
 
     /// <inheritdoc />
     public int Position { get; private set; }
@@ -147,8 +150,8 @@ public sealed class StreamDataProvider : ISoundDataProvider
                 && FormatInfo.ChannelCount > 0)
             {
                 var metadataLengthSamples = FormatInfo.Duration.TotalSeconds
-                                            * FormatInfo.SampleRate
-                                            * FormatInfo.ChannelCount;
+                                            * _decoder.SampleRate
+                                            * _decoder.Channels;
 
                 if (metadataLengthSamples is >= 0 and <= int.MaxValue)
                     metadataLength = (int)metadataLengthSamples;
@@ -223,7 +226,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     public void Dispose()
     {
         if (IsDisposed) return;
-        _decoder.EndOfStreamReached -= EndOfStreamReached;
+        _decoder.EndOfStreamReached -= ForwardDecoderEnd;
         _decoder.Dispose();
         _stream.Dispose();
         IsDisposed = true;

@@ -1,9 +1,10 @@
 using SoundFlow.Enums;
 using SoundFlow.Interfaces;
 
-namespace SoundFlow.Codecs.FFMpeg;
+namespace SoundFlow.Playback;
 
-internal sealed class FormatConvertingDecoder : ISoundDecoder
+/// <summary>Converts decoded F32 frames between channel counts and sample rates using bounded linear interpolation.</summary>
+public sealed class PcmFormatConvertingDecoder : ISoundDecoder
 {
     private readonly ISoundDecoder _inner;
     private readonly int _sourceChannels;
@@ -16,7 +17,8 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
     private bool _innerEnded;
     private bool _endOfStreamRaised;
 
-    public FormatConvertingDecoder(ISoundDecoder inner, int targetChannels, int targetSampleRate)
+    /// <summary>Creates a converter which owns its input decoder. PCM is always represented as interleaved floats.</summary>
+    public PcmFormatConvertingDecoder(ISoundDecoder inner, int targetChannels, int targetSampleRate)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _sourceChannels = Math.Max(1, inner.Channels);
@@ -24,18 +26,31 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
         _targetChannels = Math.Max(1, targetChannels);
         _targetSampleRate = Math.Max(1, targetSampleRate);
 
+        if (inner.Channels is < 1 or > 8 || targetChannels is < 1 or > 8 || inner.SampleRate <= 0 || targetSampleRate <= 0) throw new ArgumentException("Expected 1 through 8 channels and positive sample rates.");
+        _sourceBuffer = new float[8192 * _sourceChannels];
+        _inner.EndOfStreamReached += InnerEnded;
         SampleFormat = inner.SampleFormat;
         Length = CalculateTargetLength(inner.Length);
     }
 
+    private void InnerEnded(object? sender, EventArgs args) => _innerEnded = true;
+
+    /// <inheritdoc />
+    /// <inheritdoc />
     public bool IsDisposed => _inner.IsDisposed;
+    /// <inheritdoc />
     public int Length { get; }
+    /// <inheritdoc />
     public SampleFormat SampleFormat { get; }
+    /// <inheritdoc />
     public int Channels => _targetChannels;
+    /// <inheritdoc />
     public int SampleRate => _targetSampleRate;
 
+    /// <inheritdoc />
     public event EventHandler<EventArgs>? EndOfStreamReached;
 
+    /// <inheritdoc />
     public int Decode(Span<float> samples)
     {
         if (IsDisposed || samples.IsEmpty)
@@ -54,7 +69,7 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
         var availableSourceFrames = _validSamples / _sourceChannels;
         if (availableSourceFrames <= 0)
         {
-            RaiseEndOfStreamOnce();
+            if (_innerEnded) RaiseEndOfStreamOnce();
             return 0;
         }
 
@@ -80,6 +95,7 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
         return samplesGenerated;
     }
 
+    /// <inheritdoc />
     public bool Seek(int offset)
     {
         if (IsDisposed || offset < 0)
@@ -97,9 +113,11 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
         return true;
     }
 
+    /// <inheritdoc />
     public void Dispose()
     {
         EndOfStreamReached = null;
+        _inner.EndOfStreamReached -= InnerEnded;
         _inner.Dispose();
     }
 
@@ -125,7 +143,6 @@ internal sealed class FormatConvertingDecoder : ISoundDecoder
             var samplesRead = _inner.Decode(_sourceBuffer.AsSpan(writeOffset, framesToRead * _sourceChannels));
             if (samplesRead <= 0)
             {
-                _innerEnded = true;
                 break;
             }
 

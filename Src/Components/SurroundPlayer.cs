@@ -1,3 +1,5 @@
+using SoundFlow.Providers;
+using Engine = SoundFlow.Abstracts.AudioEngine;
 using System.Buffers;
 using System.Numerics;
 using SoundFlow.Abstracts;
@@ -147,7 +149,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
     /// <param name="engine">The audio engine used for managing audio playback.</param>
     /// <param name="format">The format of the audio stream, including sample rate, sample format, and channel count.</param>
     /// <param name="dataProvider">The data provider that supplies audio data for playback.</param>
-    public SurroundPlayer(AudioEngine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format, dataProvider)
+    public SurroundPlayer(Engine engine, AudioFormat format, ISoundDataProvider dataProvider) : base(engine, format, dataProvider)
     {
         _lowPassFilter = new LowPassModifier(format, 120f);
         InitializePredefinedConfigurations();
@@ -253,7 +255,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
 
         var frameCount = buffer.Length / outputChannels;
         var sourceChannels = Format.Channels;
-        
+
         var tempFrame = ArrayPool<float>.Shared.Rent(outputChannels);
         var sourceFrame = ArrayPool<float>.Shared.Rent(sourceChannels);
 
@@ -266,14 +268,14 @@ public sealed class SurroundPlayer : SoundPlayerBase
 
                 // Copy the original source frame for processing
                 buffer.Slice(sourceFrameStart, sourceChannels).CopyTo(sourceFrame);
-                
+
                 // Clear the temporary frame buffer for new data
                 var tempFrameSpan = tempFrame.AsSpan(0, outputChannels);
                 tempFrameSpan.Clear();
 
                 // Map source channels to output channels, performing upmixing or downmixing as needed.
                 MapChannels(sourceFrame.AsSpan(0, sourceChannels), tempFrameSpan, sourceLayout);
-                
+
                 // Clear the current frame's output in the main buffer before writing new data.
                 buffer.Slice(frameStart, outputChannels).Clear();
 
@@ -292,13 +294,13 @@ public sealed class SurroundPlayer : SoundPlayerBase
                             _currentConfiguration.Delays[speakerIndex],
                             speakerIndex
                         );
-                        
+
                         // Apply low-pass filter to the virtual LFE speaker if it exists.
                         if (speakerIndex == _currentConfiguration.LfeChannelIndex)
                         {
                             delayedSample = ApplyLowPassFilter(delayedSample);
                         }
-                        
+
                         // Distribute the delayed sample to each output channel based on panning factors.
                         for (var ch = 0; ch < outputChannels; ch++)
                         {
@@ -306,7 +308,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
                         }
                     }
                 }
-                else 
+                else
                 {
                     // Apply LFE low-pass filter directly to the mapped multi-channel frame.
                     if (_currentConfiguration.LfeChannelIndex >= 0 && _currentConfiguration.LfeChannelIndex < outputChannels)
@@ -314,7 +316,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
                         var lfeIndex = _currentConfiguration.LfeChannelIndex;
                         tempFrame[lfeIndex] = ApplyLowPassFilter(tempFrame[lfeIndex]);
                     }
-                    
+
                     // For Quad, Surround sources, copy the mapped (upmixed/downmixed) channels directly.
                     tempFrameSpan.CopyTo(buffer.Slice(frameStart, outputChannels));
                 }
@@ -411,9 +413,9 @@ public sealed class SurroundPlayer : SoundPlayerBase
     }
 
     /// <inheritdoc />
-    protected override void HandleEndOfStream(Span<float> buffer, int channels)
+    protected override void OnPlaybackEnded()
     {
-        base.HandleEndOfStream(buffer, channels);
+        base.OnPlaybackEnded();
         InitializeDelayLines(); // Re-initialize delay lines on loop or stop to avoid artifacts.
     }
 
@@ -750,7 +752,7 @@ public class SurroundConfiguration(string name, float[] volumes, float[] delays,
     ///     The positions of each speaker.
     /// </summary>
     public Vector2[] SpeakerPositions { get; set; } = speakerPositions;
-    
+
     /// <summary>
     /// The index of the LFE (Low-Frequency Effects) channel in this configuration.
     /// Set to -1 if no LFE channel exists.

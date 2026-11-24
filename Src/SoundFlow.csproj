@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>net8.0</TargetFramework>
@@ -46,4 +46,5 @@
         <None Include="..\logo.png" Pack="true" PackagePath="" />
         <None Include="SoundFlow.targets" Pack="true" PackagePath="" />
     </ItemGroup>
+    <ItemGroup><InternalsVisibleTo Include="SoundFlow.Tests" /></ItemGroup>
 </Project>
