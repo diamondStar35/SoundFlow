@@ -22,10 +22,6 @@ jobs:
             os: windows-2025
             msystem: MINGW64
             mingw-package-prefix: mingw-w64-x86_64
-          - arch: x86
-            os: windows-2025
-            msystem: MINGW32
-            mingw-package-prefix: mingw-w64-i686
           - arch: arm64
             os: windows-11-arm
             msystem: CLANGARM64
@@ -96,7 +92,7 @@ jobs:
         with:
           name: soundflow-ffmpeg-win-${{ matrix.arch }}
           path: Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*.dll
-  
+
   # Linux builds
   build-linux:
     strategy:
@@ -113,13 +109,6 @@ jobs:
               -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc
               -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++
             toolchain_pkgs: gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          - arch: arm
-            cmake_opts: >-
-              -DCMAKE_SYSTEM_NAME=Linux
-              -DCMAKE_SYSTEM_PROCESSOR=arm
-              -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc
-              -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++
-            toolchain_pkgs: gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
     runs-on: ubuntu-22.04
     defaults:
       run:
@@ -142,8 +131,6 @@ jobs:
           NM_CMD="nm"
           if [[ "${{ matrix.arch }}" == "arm64" ]]; then
             NM_CMD="aarch64-linux-gnu-nm"
-          elif [[ "${{ matrix.arch }}" == "arm" ]]; then
-            NM_CMD="arm-linux-gnueabihf-nm"
           fi
           ARTIFACT_DIR="build/runtimes/linux-${{ matrix.arch }}/native"
           echo "--- Analyzing artifacts in $ARTIFACT_DIR ---"
@@ -237,10 +224,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - rid_arch: x64
-            abi: x86_64
-          - rid_arch: arm
-            abi: armeabi-v7a
           - rid_arch: arm64
             abi: arm64-v8a
     runs-on: ubuntu-22.04

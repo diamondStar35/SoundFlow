@@ -1,14 +1,9 @@
-﻿<Project>
+<Project>
     <ItemGroup>
         <!-- Windows Runtimes -->
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x64\native\soundflow-ffmpeg.dll" AssetKind="Native">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <RuntimeIdentifier>win-x64</RuntimeIdentifier>
-            <OutputPath>lib\soundflow-ffmpeg.dll</OutputPath>
-        </RuntimeTargets>
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-x86\native\soundflow-ffmpeg.dll" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>win-x86</RuntimeIdentifier>
             <OutputPath>lib\soundflow-ffmpeg.dll</OutputPath>
         </RuntimeTargets>
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\win-arm64\native\soundflow-ffmpeg.dll" AssetKind="Native">
@@ -21,11 +16,6 @@
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
-            <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
-        </RuntimeTargets>
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm\native\libsoundflow-ffmpeg.so" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>linux-arm</RuntimeIdentifier>
             <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
         </RuntimeTargets>
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\linux-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
@@ -47,19 +37,9 @@
         </RuntimeTargets>
 
         <!-- Android Runtimes -->
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-arm\native\libsoundflow-ffmpeg.so" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>android-arm</RuntimeIdentifier>
-            <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
-        </RuntimeTargets>
         <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
             <CopyToOutputDirectory>Always</CopyToOutputDirectory>
             <RuntimeIdentifier>android-arm64</RuntimeIdentifier>
-            <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
-        </RuntimeTargets>
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\android-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>android-x64</RuntimeIdentifier>
             <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
         </RuntimeTargets>
 
@@ -71,16 +51,6 @@
         </RuntimeTargets>
 
         <!-- FreeBSD Runtimes -->
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-x64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>freebsd-x64</RuntimeIdentifier>
-            <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
-        </RuntimeTargets>
-        <RuntimeTargets Include="$(MSBuildThisFileDirectory)..\runtimes\freebsd-arm64\native\libsoundflow-ffmpeg.so" AssetKind="Native">
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <RuntimeIdentifier>freebsd-arm64</RuntimeIdentifier>
-            <OutputPath>lib\libsoundflow-ffmpeg.so</OutputPath>
-        </RuntimeTargets>
 
     </ItemGroup>
 </Project>

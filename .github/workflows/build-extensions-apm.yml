@@ -21,27 +21,12 @@ jobs:
             toolchain: mingw
             cross_file: "windows-x64.crossfile"
 
-          - os: windows-2025
-            rid: win-x86
-            platform: Windows
-            arch: x86
-            toolchain: mingw
-            cross_file: "windows-x86.crossfile"
-
-          # Linux builds
           - os: ubuntu-latest
             rid: linux-x64
             platform: Linux
             arch: x86_64
             toolchain: gcc
             cross_file: ""
-
-          - os: ubuntu-latest
-            rid: linux-arm
-            platform: Linux
-            arch: armv7l
-            toolchain: gcc
-            cross_file: "linux-arm.crossfile"
 
           - os: ubuntu-latest
             rid: linux-arm64
@@ -74,14 +59,6 @@ jobs:
             cross_file: "ios.crossfile"
 
           # Android builds
-          #- os: ubuntu-latest
-          #  rid: android-arm
-          #  platform: Android
-          #  arch: armeabi-v7a
-          #  toolchain: clang
-          #  cross_file: "android-arm.crossfile"
-          #  compiler_prefix: "armv7a-linux-androideabi"
-
           - os: ubuntu-latest
             rid: android-arm64
             platform: Android
@@ -89,14 +66,6 @@ jobs:
             toolchain: clang
             cross_file: "android-arm64.crossfile"
             compiler_prefix: "aarch64-linux-android"
-
-          - os: ubuntu-latest
-            rid: android-x64
-            platform: Android
-            arch: x86_64
-            toolchain: clang
-            cross_file: "android-x64.crossfile"
-            compiler_prefix: "x86_64-linux-android"
 
     name: Build for ${{ matrix.platform }} - ${{ matrix.arch }}
 
@@ -122,24 +91,14 @@ jobs:
           platform: x64
           static: any
 
-      - name: Set up MinGW (Windows - x86)
-        if: matrix.platform == 'Windows' && matrix.arch == 'x86'
-        uses: deevroman/setup-mingw@0.0.1
-        with:
-          platform: any
-          static: any
-
-      # Linux dependencies
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest' && matrix.platform == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config file binutils
-          
+
           # For cross-compilation
-          if [ "${{ matrix.rid }}" == "linux-arm" ]; then
-            sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
-          elif [ "${{ matrix.rid }}" == "linux-arm64" ]; then
+          if [ "${{ matrix.rid }}" == "linux-arm64" ]; then
             sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
           fi
       # Android setup
@@ -188,7 +147,7 @@ jobs:
           cd Native/webrtc-audio-processing/
           BUILD_DIR="build_${{ matrix.rid }}"
           EXTRA_ARGS="--buildtype=release"
-          
+
           if [ -n "${{ matrix.cross_file }}" ]; then
             meson setup $BUILD_DIR --cross-file crossfiles/${{ matrix.cross_file }} $EXTRA_ARGS
           else
@@ -207,12 +166,12 @@ jobs:
           cd Native/webrtc-audio-processing/
           BUILD_DIR="build_${{ matrix.rid }}/webrtc/modules/audio_processing"
           OUTPUT_DIR="runtimes/${{ matrix.rid }}/native"
-          
+
           echo "Listing contents of BUILD_DIR: $BUILD_DIR"
           ls -l "$BUILD_DIR"
-          
+
           mkdir -p "$OUTPUT_DIR"
-          
+
           if [ "${{ matrix.platform }}" == "Windows" ]; then
             cp "$BUILD_DIR"/*.dll "$OUTPUT_DIR/webrtc-apm.dll"
           elif [ "${{ matrix.platform }}" == "iOS" ] || [ "${{ matrix.platform }}" == "macOS" ]; then
@@ -220,7 +179,7 @@ jobs:
           else
             cp "$BUILD_DIR"/*.so "$OUTPUT_DIR/libwebrtc-apm.so"
           fi
-          
+
           echo "Copied artifact to:"
           ls -l "$OUTPUT_DIR"
       # Dependency analysis
@@ -249,12 +208,7 @@ jobs:
             readelf -d "$LIB_PATH" | grep "NEEDED" || true
           fi
           echo -e "\n=== Symbols ==="
-          if [[ "${{ matrix.arch }}" == "x86_64" || "${{ matrix.arch }}" == "aarch64" ]]; then
-            nm -g "$LIB_PATH" | grep " T " || true
-          else
-            # For armv7l, use the correct cross-arch nm
-            arm-linux-gnueabihf-nm -g "$LIB_PATH" | grep " T " || true
-          fi
+          nm -g "$LIB_PATH" | grep " T " || true
           echo -e "\n=== SONAME ==="
           readelf -d "$LIB_PATH" | grep "SONAME" || true
       - name: Analyze Dependencies (Android)

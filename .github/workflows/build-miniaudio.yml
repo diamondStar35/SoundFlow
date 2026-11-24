@@ -22,14 +22,6 @@ jobs:
             msystem: MINGW64
             mingw_package_prefix: mingw-w64-x86_64
 
-          - os: windows-2025
-            rid: win-x86
-            platform: Windows
-            arch: x86
-            lib_extension: ".dll"
-            msystem: MINGW32
-            mingw_package_prefix: mingw-w64-i686
-
           - os: windows-11-arm
             rid: win-arm64
             platform: Windows
@@ -44,13 +36,6 @@ jobs:
             platform: Linux
             arch: x86_64
             cmake_target_arch: x64
-            lib_extension: ".so"
-
-          - os: ubuntu-22.04
-            rid: linux-arm
-            platform: Linux
-            arch: armv7l
-            cmake_target_arch: arm
             lib_extension: ".so"
 
           - os: ubuntu-22.04
@@ -85,24 +70,10 @@ jobs:
 
           # Android builds
           - os: ubuntu-22.04
-            rid: android-arm
-            platform: Android
-            arch: armeabi-v7a
-            cmake_target_arch: armeabi-v7a
-            lib_extension: ".so"
-
-          - os: ubuntu-22.04
             rid: android-arm64
             platform: Android
             arch: arm64-v8a
             cmake_target_arch: arm64-v8a
-            lib_extension: ".so"
-
-          - os: ubuntu-22.04
-            rid: android-x64
-            platform: Android
-            arch: x86_64
-            cmake_target_arch: x86_64
             lib_extension: ".so"
 
     name: Build for ${{ matrix.platform }} - ${{ matrix.arch }}
@@ -150,16 +121,10 @@ jobs:
         uses: android-actions/setup-android@v4
 
       - name: Install Cross-Compilation tools (Linux)
-        if: matrix.platform == 'Linux' && (matrix.arch == 'armv7l' || matrix.arch == 'aarch64')
+        if: matrix.platform == 'Linux' && matrix.arch == 'aarch64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-user-static
-          if [ "${{ matrix.arch }}" == "armv7l" ]; then
-            sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf binutils-arm-linux-gnueabihf
-          elif [ "${{ matrix.arch }}" == "aarch64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-          fi
-
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
       - name: Configure CMake (Windows)
         if: matrix.platform == 'Windows'
         shell: msys2 {0}
@@ -187,16 +152,13 @@ jobs:
             CMAKE_FLAGS="-DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_target_arch }}"
           elif [ "${{ matrix.platform }}" == "Linux" ]; then
             # Add specific flags for Linux cross-compilation
-            if [ "${{ matrix.arch }}" == "armv7l" ]; then
-              CMAKE_FLAGS="-DCMAKE_SYSTEM_PROCESSOR=arm -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc -DCMAKE_CXX_COMPILER=arm-linux-gnueabihf-g++"
-            elif [ "${{ matrix.arch }}" == "aarch64" ]; then
+            if [ "${{ matrix.arch }}" == "aarch64" ]; then
               CMAKE_FLAGS="-DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc -DCMAKE_CXX_COMPILER=aarch64-linux-gnu-g++"
             else
               CMAKE_FLAGS="-DCMAKE_SYSTEM_PROCESSOR=x86_64"
             fi
           fi
           cmake -B build -DCMAKE_BUILD_TYPE=Release $CMAKE_FLAGS
-
       # Build steps
       - name: Build (Windows)
         if: matrix.platform == 'Windows'
@@ -298,15 +260,10 @@ jobs:
           fi
 
           echo -e "\n=== Symbols ==="
-          if [[ "${{ matrix.arch }}" == "x86_64" || "${{ matrix.arch }}" == "aarch64" ]]; then
-            nm -g "$LIB_PATH" | grep " T " || true
-          else
-            arm-linux-gnueabihf-nm -g "$LIB_PATH" | grep " T " || true
-          fi
+          nm -g "$LIB_PATH" | grep " T " || true
 
           echo -e "\n=== SONAME ==="
           readelf -d "$LIB_PATH" | grep "SONAME" || true
-
       - name: Analyze Dependencies and Exports (macOS)
         if: matrix.platform == 'macOS'
         shell: bash
