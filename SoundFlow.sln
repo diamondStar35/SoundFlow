@@ -40,6 +40,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Backends", "Backends", "{81
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Backends.MiniAudio", "Backends\SoundFlow.Backends.MiniAudio\SoundFlow.Backends.MiniAudio.csproj", "{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SoundFlow.Backends.OpenAL", "Backends\SoundFlow.Backends.OpenAL\SoundFlow.Backends.OpenAL.csproj", "{246E72C0-EAE4-4D27-A112-393DC17E1584}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -106,6 +108,10 @@ Global
 		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25}.Release|Any CPU.Build.0 = Release|Any CPU
+		{246E72C0-EAE4-4D27-A112-393DC17E1584}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{246E72C0-EAE4-4D27-A112-393DC17E1584}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{246E72C0-EAE4-4D27-A112-393DC17E1584}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{246E72C0-EAE4-4D27-A112-393DC17E1584}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -126,5 +132,6 @@ Global
 		{DD934AB4-CD4F-427C-9367-3A48C1156783} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{C51F35EF-3C8F-4865-A51A-99AF616191C3} = {BE06375D-0A93-4916-A551-9875089314CC}
 		{8A031E4B-5FD2-47C5-BCAD-1BB1B924BC25} = {81267934-4FE5-6C83-B806-5B06E723B05C}
+		{246E72C0-EAE4-4D27-A112-393DC17E1584} = {81267934-4FE5-6C83-B806-5B06E723B05C}
 	EndGlobalSection
 EndGlobal

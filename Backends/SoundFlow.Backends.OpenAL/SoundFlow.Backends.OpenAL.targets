@@ -1,0 +1,7 @@
+<Project>
+  <ItemGroup Condition="'$(TargetPlatformIdentifier)' == 'ios' or '$(TargetFrameworkIdentifier)' == 'Xamarin.iOS'">
+    <NativeReference Include="$(MSBuildThisFileDirectory)../runtimes/ios-arm64/native/soft_oal.framework" Condition="Exists('$(MSBuildThisFileDirectory)../runtimes/ios-arm64/native/soft_oal.framework')">
+      <Kind>Framework</Kind><SmartLink>false</SmartLink><ForceLoad>true</ForceLoad>
+    </NativeReference>
+  </ItemGroup>
+</Project>

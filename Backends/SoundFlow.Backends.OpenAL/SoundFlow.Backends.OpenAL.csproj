@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsAotCompatible>true</IsAotCompatible>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <Version>1.4.2</Version>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Description>OpenAL Soft playback, spatial audio, EFX, capture and offline rendering for SoundFlow, with FFmpeg codecs.</Description>
+    </PropertyGroup>
+    <PropertyGroup Condition="'$(IOSHostBuild)' == 'true'">
+        <DefineConstants>$(DefineConstants);SOUNDFLOW_IOS_FRAMEWORK_IMPORTS</DefineConstants>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="../../Src/SoundFlow.csproj" />
+        <ProjectReference Include="../../Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj" />
+        <InternalsVisibleTo Include="SoundFlow.Tests" />
+        <None Include="runtimes/**/*" Pack="true" PackagePath="runtimes" />
+        <None Include="Notices/**/*" Pack="true" PackagePath="Notices" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+    <Import Project="../../Packaging/NativeAssets.targets" />
+    <ItemGroup>
+        <None Include="SoundFlow.Backends.OpenAL.targets" Pack="true" PackagePath="buildTransitive" />
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" PackagePath="README.md" />
+    </ItemGroup>
+</Project>
