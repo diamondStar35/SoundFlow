@@ -65,7 +65,12 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     /// <summary>
     /// Gets the audio format of the component.
     /// </summary>
-    public AudioFormat Format { get; }
+    public AudioFormat Format { get; private set; }
+
+    /// <summary>Changes a stopped component's declared output and updates channel-dependent gain state.</summary>
+    protected void SetProcessingFormat(AudioFormat format) { Format = format; UpdateVolumePanFactors(format.Channels); }
+    /// <summary>Players executing modifiers on their producer skip the outer graph modifier pass.</summary>
+    protected virtual bool ProcessesModifiersInternally => false;
 
     /// <summary>
     ///     Name of the component
@@ -327,7 +332,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     /// </summary>
     /// <param name="modifier">The modifier to add.</param>
     /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
-    public void AddModifier(SoundModifier modifier)
+    public virtual void AddModifier(SoundModifier modifier)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
@@ -345,7 +350,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     /// </summary>
     /// <param name="modifier">The modifier to remove.</param>
     /// <exception cref="ObjectDisposedException">Thrown if the component has been disposed.</exception>
-    public void RemoveModifier(SoundModifier modifier)
+    public virtual void RemoveModifier(SoundModifier modifier)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         lock (_stateLock)
@@ -430,7 +435,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             GenerateAudio(workingBuffer, channels);
 
             foreach (var modifier in currentModifiers)
-                if (modifier.Enabled)
+                if (!ProcessesModifiersInternally && modifier.Enabled)
                     modifier.Process(workingBuffer, channels);
 
             ApplyVolumeAndPanning(workingBuffer, startVolumePan, targetVolumePan, channels);

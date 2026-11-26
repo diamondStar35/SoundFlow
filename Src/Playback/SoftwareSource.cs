@@ -14,25 +14,30 @@ internal sealed class SoftwareSource : Source
 {
     private readonly SoundPlayer _player;
     private readonly IDataProvider _provider;
-    private readonly BufferTap _tap;
-    public SoftwareSource(PlaybackDevice device, IDataProvider provider, AudioFormat format, bool leaveOpen)
+    public SoftwareSource(PlaybackDevice device, IDataProvider provider, AudioFormat format, bool leaveOpen, SourceOptions? options = null)
         : base(device, provider, format)
     {
         try
         {
             _provider = provider;
             IDataProvider input = leaveOpen ? new BorrowedProvider(provider) : provider;
-            if (format.Channels != device.Format.Channels || format.SampleRate != device.Format.SampleRate)
-                input = new ConvertedDataProvider(input, format, device.Format);
-            _player = new SoundPlayer(device.Engine, device.Format, input);
-            _tap = new BufferTap(this);
-            _player.AddModifier(_tap);
+            var inputFormat = format;
+            if (format.SampleRate != device.Format.SampleRate)
+            {
+                inputFormat = format with { SampleRate = device.Format.SampleRate };
+                input = new ConvertedDataProvider(input, format, inputFormat);
+            }
+            _player = new SoundPlayer(device.Engine, inputFormat, input, options?.Processing, device.Format.Channels);
+            _player.SourceBufferProcessed += (samples, info) => PublishBuffer(samples, info.Format);
             _player.PlaybackEnded += (_, _) => RaisePlaybackEnded();
             _player.PlaybackFailed += (_, error) => RaisePlaybackTerminated(PlaybackEndReason.Failed, error);
             device.MasterMixer.AddComponent(_player);
         }
         catch { ReleaseProviderOwnership(); throw; }
     }
+    public override AudioFormat RenderedFormat => _player.Format;
+    public override Processing.Chain? ProcessingChain => _player.ProcessingChain;
+    public override void ConfigureProcessing(Processing.Chain? chain) => _player.ConfigureProcessing(chain);
     public override PlaybackState State => _player.State;
     public override IDataProvider DataProvider => _provider;
     public override bool IsLooping { get => _player.IsLooping; set => _player.IsLooping = value; }
@@ -47,10 +52,7 @@ internal sealed class SoftwareSource : Source
     public override void Stop() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Stop(); RaisePlaybackTerminated(PlaybackEndReason.Stopped); }
     public override bool Seek(int sampleOffset) => _player.Seek(ToOutput(sampleOffset));
     public override void SetLoopPoints(int startSample, int endSample = -1) => _player.SetLoopPoints(ToOutput(startSample), endSample < 0 ? -1 : ToOutput(endSample));
-    public override void AddModifier(SoundModifier modifier)
-    {
-        _player.RemoveModifier(_tap); _player.AddModifier(modifier); _player.AddModifier(_tap);
-    }
+    public override void AddModifier(SoundModifier modifier) => _player.AddModifier(modifier);
     public override void RemoveModifier(SoundModifier modifier) => _player.RemoveModifier(modifier);
     protected internal override bool CanTransferTo(PlaybackDevice device) => !IsDisposed && device.Format == Device.Format && device.Engine == Device.Engine;
     protected internal override void RebindDevice(PlaybackDevice device)
@@ -69,14 +71,8 @@ internal sealed class SoftwareSource : Source
         _player.Dispose();
     }
 
-    private int ToOutput(int samples) => checked((int)((long)(samples / Format.Channels) * Device.Format.SampleRate / Format.SampleRate * Device.Format.Channels));
-    private int ToInput(int samples) => checked((int)((long)(samples / Device.Format.Channels) * Format.SampleRate / Device.Format.SampleRate * Format.Channels));
-
-    private sealed class BufferTap(SoftwareSource source) : SoundModifier
-    {
-        public override float ProcessSample(float sample, int channel) => sample;
-        public override void Process(Span<float> buffer, int channels) => source.PublishBuffer(buffer, source.Device.Format);
-    }
+    private int ToOutput(int samples) => checked((int)((long)(samples / Format.Channels) * _player.InputFormat.SampleRate / Format.SampleRate * _player.InputFormat.Channels));
+    private int ToInput(int samples) => checked((int)((long)(samples / _player.InputFormat.Channels) * Format.SampleRate / _player.InputFormat.SampleRate * Format.Channels));
 
     private sealed class BorrowedProvider(IDataProvider inner) : ICancellableDataProvider
     {

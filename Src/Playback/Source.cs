@@ -18,6 +18,12 @@ public abstract class Source : FeatureHost, IPlayer
     public PlaybackDevice Device { get; private set; }
     /// <summary>PCM input format; mono is retained for 3D sources.</summary>
     public AudioFormat Format { get; }
+    /// <summary>Actual software output before native/endpoint processing. Format continues to describe the original provider for seeking and loops.</summary>
+    public virtual AudioFormat RenderedFormat => Format;
+    /// <summary>Current reusable chain definition, or null for a backend's identity path.</summary>
+    public virtual Processing.Chain? ProcessingChain => null;
+    /// <summary>Replaces software structure while stopped. A backend validates formats and allocates replacement state before committing.</summary>
+    public virtual void ConfigureProcessing(Processing.Chain? chain) => throw new NotSupportedException("This source does not support configurable processing chains.");
     /// <summary>Whether the source has been disposed.</summary>
     public bool IsDisposed { get; protected set; }
     /// <summary>Creates an owned source and reserves exclusive consumption of its provider.</summary>

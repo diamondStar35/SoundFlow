@@ -19,6 +19,10 @@ public sealed class SoundPlayer : SoundPlayerBase
     /// <param name="dataProvider">The data provider that supplies audio data for playback.</param>
     public SoundPlayer(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format, dataProvider) { }
 
+    /// <summary>Creates a channel-aware buffered player. Endpoint channel conversion is optional and occurs after the chain.</summary>
+    public SoundPlayer(Engine engine, AudioFormat format, IDataProvider dataProvider, Processing.Chain? processing, int endpointChannels = 0)
+        : base(engine, format, dataProvider, processing, endpointChannels) { }
+
     /// <inheritdoc />
     public override string Name { get; set; } = "Sound Player";
 }

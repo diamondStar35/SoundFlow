@@ -1,3 +1,5 @@
+using SoundFlow.Processing;
+using SoundFlow.Features;
 using SoundFlow.Providers;
 using SoundFlow.Components;
 using SoundFlow.Enums;
@@ -13,6 +15,14 @@ namespace SoundFlow.Abstracts;
 public abstract class SoundPlayerBase : SoundComponent, IPlayer
 {
     internal Transport Transport { get; }
+    /// <summary>Transport input before software channel conversion. Seek/loop offsets use this interleaved-sample domain.</summary>
+    public AudioFormat InputFormat => Transport.Format;
+    /// <summary>Current factory definition; processor instances remain private to this player.</summary>
+    public Chain ProcessingChain => _session.Processing.Definition;
+    /// <summary>Final software packets, produced outside the physical audio callback. Spans are borrowed only for the handler.</summary>
+    public event BufferCallback? SourceBufferProcessed;
+    /// <inheritdoc />
+    protected override bool ProcessesModifiersInternally => true;
     private readonly DecodeSession _session;
     private readonly object _consumeGate = new();
     private DecodeSession.Block? _block;
@@ -22,11 +32,42 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     private volatile bool _changing;
     private volatile PlaybackState _state;
     /// <summary>Creates a player which owns its provider and one bounded producer session.</summary>
-    protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format)
+    protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider, Chain? processing = null, int endpointChannels = 0) : base(engine, format)
     {
         Transport = new Transport(format, dataProvider);
-        try { _session = new DecodeSession(engine.Decoding, Transport); }
+        try
+        {
+            var runner = (processing ?? Chain.Empty).CreateRunner(format with { Format = SampleFormat.F32 }, engine.PlaybackConfiguration.BufferFrames);
+            _session = new DecodeSession(engine.Decoding, Transport, process: PublishProcessed, processing: runner, endpointChannels: endpointChannels);
+            SetProcessingFormat(_session.OutputFormat);
+        }
         catch { Transport.Dispose(); throw; }
+    }
+    private void PublishProcessed(float[] samples, int count) => SourceBufferProcessed?.Invoke(samples.AsSpan(0, count),
+        new BufferInfo(_session.OutputFormat, ProcessingStage.SourceInput, Capability.Playback));
+    private void RequireStopped()
+    {
+        ProcessingScope.ThrowIfProcessing(); ObjectDisposedException.ThrowIf(IsDisposed, this);
+        if (State != PlaybackState.Stopped) throw new InvalidOperationException("Stop playback before changing processor structure.");
+    }
+    /// <summary>Validates and installs new processor state while stopped, preserving the transport input domain.</summary>
+    public void ConfigureProcessing(Chain? chain)
+    {
+        RequireStopped();
+        var runner = (chain ?? Chain.Empty).CreateRunner(InputFormat with { Format = SampleFormat.F32 }, Engine.PlaybackConfiguration.BufferFrames);
+        try { foreach (var modifier in Modifiers) if (modifier != null) runner.AddModifier(modifier); _session.ReplaceProcessing(runner); }
+        catch { if (!ReferenceEquals(_session.Processing, runner)) runner.Dispose(); throw; }
+        finally { SetProcessingFormat(_session.OutputFormat); }
+    }
+    /// <inheritdoc />
+    public override void AddModifier(SoundModifier modifier)
+    {
+        RequireStopped(); _session.Change(() => _session.Processing.AddModifier(modifier), true); base.AddModifier(modifier);
+    }
+    /// <inheritdoc />
+    public override void RemoveModifier(SoundModifier modifier)
+    {
+        RequireStopped(); _session.Change(() => _session.Processing.RemoveModifier(modifier), true); base.RemoveModifier(modifier);
     }
     /// <inheritdoc />
     public float PlaybackSpeed
@@ -53,7 +94,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         }
     }
     /// <summary>Content consumed by the software mixer, excluding queued decoding and hardware output latency.</summary>
-    public float Time => (float)_position / Format.Channels / Format.SampleRate;
+    public float Time => (float)_position / InputFormat.Channels / InputFormat.SampleRate;
     /// <inheritdoc />
     public float Duration => Transport.Duration;
     /// <inheritdoc />
@@ -91,7 +132,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
                 var count = Math.Min(buffer.Length - written, _block!.Count - _offset);
                 _block.Samples.AsSpan(_offset, count).CopyTo(buffer[written..]);
                 _offset += count; written += count;
-                _position = _block.StartPosition + (int)(_offset * _block.Speed);
+                _position = _block.Positions[_offset / Format.Channels];
                 if (_offset == _block.Count)
                 {
                     _position = _block.EndPosition; _session.Release(_block); _block = null; _offset = 0;
@@ -152,7 +193,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     public bool Seek(TimeSpan time, SeekOrigin seekOrigin = SeekOrigin.Begin) => Seek((float)time.TotalSeconds + (seekOrigin switch
     { SeekOrigin.Begin => 0, SeekOrigin.Current => Time, SeekOrigin.End => Duration, _ => throw new ArgumentOutOfRangeException(nameof(seekOrigin)) }));
     /// <inheritdoc />
-    public bool Seek(float time) => float.IsFinite(time) && Seek(checked((int)(time * Format.SampleRate * Format.Channels)));
+    public bool Seek(float time) => float.IsFinite(time) && Seek(checked((int)(time * InputFormat.SampleRate * InputFormat.Channels)));
     /// <inheritdoc />
     public bool Seek(int sampleOffset)
     {
@@ -161,8 +202,8 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         return result;
     }
     /// <inheritdoc />
-    public void SetLoopPoints(float startTime, float? endTime = -1f) => SetLoopPoints((int)(startTime * Format.SampleRate * Format.Channels),
-        endTime is null or -1 ? -1 : (int)(endTime.Value * Format.SampleRate * Format.Channels));
+    public void SetLoopPoints(float startTime, float? endTime = -1f) => SetLoopPoints((int)(startTime * InputFormat.SampleRate * InputFormat.Channels),
+        endTime is null or -1 ? -1 : (int)(endTime.Value * InputFormat.SampleRate * InputFormat.Channels));
     /// <inheritdoc />
     public void SetLoopPoints(int startSample, int endSample = -1) => Change(() => { Transport.SetLoopPoints(startSample, endSample); if (DataProvider.CanSeek) Transport.Seek(_position); });
     /// <inheritdoc />

@@ -38,8 +38,14 @@ public abstract class PlaybackDevice : Device
     public virtual Source CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false)
         => new SoftwareSource(this, provider, format, leaveOpen);
 
+    /// <summary>Creates an ordinary source with explicit channel-aware software processing.</summary>
+    public virtual Source CreateSource(IDataProvider provider, AudioFormat format, SourceOptions options, bool leaveOpen = false)
+        => new SoftwareSource(this, provider, format, leaveOpen, options);
+
     /// <summary>Creates an independent source over an immutable decoded clip.</summary>
     public Source CreateSource(Clip clip) => CreateSource(clip.Open(), clip.Format);
+    /// <summary>Creates an independently processed clip source; the native prepared-clip fast path is not used.</summary>
+    public Source CreateSource(Clip clip, SourceOptions options) => CreateSource(clip.Open(), clip.Format, options);
 
     /// <summary>Creates one source from a software graph. The graph must not also be attached to another rendering path.</summary>
     public Source CreateSource(SoundComponent graph, bool leaveOpen = false)
@@ -49,8 +55,14 @@ public abstract class PlaybackDevice : Device
     public virtual SpatialSource CreateSpatialSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false)
         => throw new NotSupportedException("This backend does not implement native spatial sources.");
 
+    /// <summary>Creates a native spatial source with explicit software processing; unsupported backends reject the request.</summary>
+    public virtual SpatialSource CreateSpatialSource(IDataProvider provider, AudioFormat format, SourceOptions options, bool leaveOpen = false)
+        => throw new NotSupportedException("This backend does not implement processed native spatial sources.");
+
     /// <summary>Creates an independent positional voice over an immutable clip.</summary>
     public SpatialSource CreateSpatialSource(Clip clip) => CreateSpatialSource(clip.Open(), clip.Format);
+    /// <summary>Creates a positional clip source with independent software processor state.</summary>
+    public SpatialSource CreateSpatialSource(Clip clip, SourceOptions options) => CreateSpatialSource(clip.Open(), clip.Format, options);
 
     /// <summary>Feeds a software graph into one positional native voice. Its children share this spatial location.</summary>
     public SpatialSource CreateSpatialSource(SoundComponent graph, bool leaveOpen = false)
