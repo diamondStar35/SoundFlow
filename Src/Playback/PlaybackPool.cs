@@ -11,9 +11,24 @@ public sealed record PlaybackPoolOptions
     public int Capacity { get; init; } = 32;
 }
 
+/// <summary>Chooses shared immutable native clip storage or an independent software processor path.</summary>
+public enum PlaybackMode
+{
+    /// <summary>Use shared prepared native clips when available; software fallback on other backends.</summary>
+    Prepared,
+    /// <summary>Create an ordinary source with fresh processor state for each admitted lease.</summary>
+    Processed
+}
+
 /// <summary>Initial native playback state and admission priority for a transient clip.</summary>
 public sealed record PlaybackOptions
 {
+    /// <summary>Prepared remains the default; select Processed for managed effects and captured-point sends.</summary>
+    public PlaybackMode Mode { get; init; }
+    /// <summary>Invoked for each processed lease. Reusable definitions are safe because binding creates fresh state.</summary>
+    public Func<Processing.Chain>? ProcessingFactory { get; init; }
+    /// <summary>Runs after initial controls but before Play, allowing initial filters and sends without a dry-only first packet.</summary>
+    public Action<Source>? Configure { get; init; }
     /// <summary>Higher numbers win; equal priorities never steal one another.</summary>
     public int Priority { get; init; }
     /// <summary>Protected playbacks retain their slot until completion, stop or disposal.</summary>
@@ -69,6 +84,9 @@ public sealed class PlaybackPool : IDisposable
         if (!float.IsFinite(options.Volume) || options.Volume < 0) throw new ArgumentOutOfRangeException(nameof(options.Volume));
         if (!float.IsFinite(options.Pitch) || options.Pitch <= 0) throw new ArgumentOutOfRangeException(nameof(options.Pitch));
         options.Spatial?.Validate();
+        if (!Enum.IsDefined(options.Mode)) throw new ArgumentOutOfRangeException(nameof(options.Mode));
+        if (options.Mode != PlaybackMode.Processed && options.ProcessingFactory != null)
+            throw new ArgumentException("ProcessingFactory requires Processed mode.", nameof(options));
         if (clip.Frames == 0) throw new ArgumentException("A pooled clip must contain audio.", nameof(clip));
         lock (_gate)
         {
@@ -79,11 +97,13 @@ public sealed class PlaybackPool : IDisposable
             PreparedClip? prepared = null; Source? source = null;
             try
             {
-                if (_device.TryGetFeature<IPreparedClips>(out var clips)) prepared = clips.Prepare(clip);
+                if (options.Mode == PlaybackMode.Prepared && _device.TryGetFeature<IPreparedClips>(out var clips)) prepared = clips.Prepare(clip);
                 // Prepare the incoming upload before interrupting the old sound. Once stolen, a playback never resumes.
                 if (victim != null) { Finish(victim, PlaybackEndReason.Stolen); _stolen++; }
+                var processing = options.Mode == PlaybackMode.Processed ? new SourceOptions { Processing = options.ProcessingFactory?.Invoke() } : null;
                 source = prepared != null
                     ? options.Spatial != null ? prepared.CreateSpatialSource() : prepared.CreateSource()
+                    : processing != null ? options.Spatial != null ? _device.CreateSpatialSource(clip, processing) : _device.CreateSource(clip, processing)
                     : options.Spatial != null ? _device.CreateSpatialSource(clip) : _device.CreateSource(clip);
                 source.Volume = options.Volume; source.IsLooping = options.Looping;
                 if (options.Spatial != null) ((SpatialSource)source).Settings = options.Spatial;
@@ -92,6 +112,7 @@ public sealed class PlaybackPool : IDisposable
                     if (!source.TryGetFeature<ISourcePitch>(out var pitch)) throw new NotSupportedException("This backend does not provide native source pitch.");
                     pitch.Pitch = options.Pitch;
                 }
+                options.Configure?.Invoke(source);
                 lease = new PlaybackLease(this, source, prepared, options, ++_played);
                 _active.Add(lease); source.PlaybackTerminated += lease.SourceTerminated;
                 source.Play(); return true;
