@@ -46,6 +46,7 @@ Coordinates are right-handed: +X right, +Y up, -Z forward. Distances use world u
 | HRTF datasets and actual status | `IHrtfAudio` |
 | Physical mode and limiter | `DeviceConfiguration`, `OpenAL.Features.IDeviceRendering` |
 | EFX, filters and shared slots | `IEffects`, `IEffectSends` |
+| Earlier software-point EFX sends | `IProcessingSends`, `Processing.Chain` |
 | Clock, offset and latency | `IPlaybackTiming` |
 | Synchronized vectors | `ISourceGroups` |
 | Scheduled source/group starts | `IScheduledPlayback` |
@@ -75,7 +76,7 @@ sends.SetDirectFilter(new FilterSettings { Kind = FilterKind.LowPass, GainHF = .
 
 Slots are device-owned wet buses shared by many voices. Four sends per source are requested by default; `MaximumSends` reports the negotiated limit. Send capacity is not the total slot limit. Slot allocation can fail on native resource exhaustion.
 
-Send gain multiplies its filter gain; slot gain controls that bus's wet output. Direct filtering is independent. Low-pass, high-pass and band-pass routes are supported. Software modifiers precede native processing without arbitrary interleaving.
+Send gain multiplies its filter gain; slot gain controls that bus's wet output. Direct filtering is independent. Low-pass, high-pass and band-pass routes are supported. Software modifiers precede native processing. `IProcessingSends` can route copied earlier software points into native effects; see [software processing](../Processing.md) for mono-to-stereo adapters, opt-in latency compensation and ownership rules.
 
 Slot targets require `AL_SOFT_effect_target`. Cycles, foreign devices and disposed targets are rejected. Disposing a slot detaches sends and incoming/outgoing links; incoming slots return to the main mix. Updates prepare a replacement before changing the current snapshot.
 
@@ -113,6 +114,7 @@ Offline clocks advance through Render only. Render additional frames after compl
 
 ```powershell
 dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --offline rendered.wav
+dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --processing-offline processed.wav
 dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --scheduled-offline scheduled.wav
 dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --play sound.mp3
 dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --graph

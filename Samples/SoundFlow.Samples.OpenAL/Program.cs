@@ -14,12 +14,17 @@ using SoundFlow.Structs;
 var mode = args.FirstOrDefault() ?? "--help";
 if (mode == "--help")
 {
-    Console.WriteLine("OpenAL examples: --offline [output.wav], --scheduled-offline [output.wav], --prepared-offline [output.wav], --convolution-offline [output.wav], --debug-offline [output.wav], --pool-stress [report.txt], --play [audio-file], --graph, --capture [output.wav], --devices");
+    Console.WriteLine("OpenAL examples: --offline [output.wav], --processing-offline [output.wav], --scheduled-offline [output.wav], --prepared-offline [output.wav], --convolution-offline [output.wav], --debug-offline [output.wav], --pool-stress [report.txt], --play [audio-file], --graph, --capture [output.wav], --devices");
     return;
 }
 using var engine = new SoundFlow.Backends.OpenAL.Engine(); // Automatically registers FFmpeg. MiniAudio is neither referenced nor loaded.
 var stereo = new AudioFormat { Format = SampleFormat.F32, Channels = 2, Layout = ChannelLayout.Stereo, SampleRate = 48000 };
 var mono = stereo with { Channels = 1, Layout = ChannelLayout.Mono };
+if (mode == "--processing-offline")
+{
+    ProcessingExample.Run(engine, stereo, args.ElementAtOrDefault(1));
+    return;
+}
 if (mode is "--prepared-offline" or "--convolution-offline" or "--debug-offline" or "--pool-stress")
 {
     AdvancedExamples.Run(engine, stereo, mode, args.ElementAtOrDefault(1));

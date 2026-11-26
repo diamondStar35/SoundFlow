@@ -45,3 +45,13 @@ Document serialization, callback threads, borrowed-buffer lifetime and disposal 
 A voice failure must remain observable without poisoning context cleanup. Test through the same source/device/effect interface used by callers; keep any fault-injection seam narrow and backend-internal.
 
 The contract fixture verifies transport consumption, provider exclusivity/release, staged buffers and a custom effect. OpenAL integration tests use real precompiled offline rendering. Neither suite opens physical hardware or compiles native libraries.
+
+## Format-aware software chains
+
+`Processing.Chain` is a reusable factory definition. Bind a public `Runner` using F32 transport input and a maximum packet frame count, then pass it to `DecodeSession`. Session owns the runner and returns packets with final PCM, copied named captures and per-frame input content positions. No internal/friend access or native backend reference is necessary; `Tests/BackendContract/StereoProcessor.cs` demonstrates an independent channel-changing implementation.
+
+Keep provider and rendered formats distinct, normalize sample rate at an existing edge, and publish the actual rendered format. A consumer must use `Block.Count / session.OutputFormat.Channels` for frame counts and `Block.Positions` to report partially consumed content. `Block.StartPosition` and `EndPosition` remain in transport input interleaved samples. Release a packet only after every endpoint has finished uploading or copying it. Session publishes a packet only after the whole processor chain and source PCM handler succeed.
+
+Allocate capture storage through `Runner.CreateCaptures` when managing packets yourself. Serialize Process, Drain, Reset, edits and Dispose. FixedBlockProcessor handles partial input at a constant declared delay. Drain upstream tails through later processors, retain zero-valued earlier captures for downstream tails, and include all queued paths in natural completion. Stop/seek/restart invalidation resets state; pause keeps it. None is the default send compensation policy even for processors explicitly marked for opt-in compensation.
+
+Implement `IProcessingSends` only when the backend can route those captured signals. Preserve legacy IEffectSends final-output semantics, share a single send-index budget and validate point/device ownership before replacing routes. Internal wet endpoints must follow the logical source for gain, pitch, transport, scheduling, failures and cleanup; they must not create a separate decoder or worker. Expose additional resource counts in diagnostics. A backend may keep unsupported processing/send methods rejected rather than advertise them.

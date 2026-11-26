@@ -49,3 +49,9 @@ Existing source/graph creation entry points remain. Set the new engine `Playback
 Use optional cancellation contracts for custom blocking inputs. Do not assume zero means EOF for a live provider, or that an arbitrary synchronous stream can be forcibly canceled. PCM callbacks reject disposal and blocking playback controls before state changes.
 
 Prepared clips and clip pools are explicit additions. Ordinary clip sources retain software processing; native prepared sources reject software modifiers, PCM taps, reverse/time-stretched transport and authored loop subranges. Pool leases automatically release on termination and must not be reused for a later playback. Native effects and diagnostics are discovered through registered features and effect-type support, not extension-name strings alone.
+
+## Software processor lifecycle
+
+SourceOptions.Processing accepts an immutable factory chain; Source.RenderedFormat reports its output separately from provider Format. Managed player modifiers now run on shared producer workers and drain declared finite tails, outside the physical mixer callback. Stop before adding/removing modifiers or replacing the chain. Custom stateful modifiers can implement IModifierState for reset/drain metadata; metadata-free modifiers retain a zero declared tail. Legacy borrowed modifier instances remain caller-owned.
+
+Earlier-point native sends use optional IProcessingSends. Latency compensation defaults to None and requires explicit per-send selection; a processor's CompensateLatency flag alone never changes timing. Structural edits remove OpenAL captured bindings; rebind before replay. Existing IEffectSends calls retain final-output routing. PlaybackPool defaults remain prepared playback; choose PlaybackMode.Processed and ProcessingFactory for fresh managed state per lease. See [Processing](Processing.md) for examples and precise timing rules.
