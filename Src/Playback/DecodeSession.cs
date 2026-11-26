@@ -87,6 +87,7 @@ public sealed class DecodeSession : IDisposable
     public void Change(Action action, bool invalidate)
     {
         ProcessingScope.ThrowIfProcessing();
+        DecodeScheduler.ValidateControlThread();
         ThrowIfFailed();
         lock (_transportGate)
         {
@@ -106,6 +107,7 @@ public sealed class DecodeSession : IDisposable
     /// <summary>Consumes a ready block. Offline callers may wait; live callers receive false immediately on starvation.</summary>
     public bool TryTake(bool wait, out Block? block)
     {
+        if (wait) DecodeScheduler.ValidateControlThread();
         if (_inline) RunOne();
         Request();
         lock (_gate)
@@ -126,6 +128,7 @@ public sealed class DecodeSession : IDisposable
     public void Prepare()
     {
         ProcessingScope.ThrowIfProcessing();
+        DecodeScheduler.ValidateControlThread();
         Request();
         lock (_gate)
         {

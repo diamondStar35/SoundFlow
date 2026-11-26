@@ -7,6 +7,18 @@ namespace SoundFlow.Tests;
 public sealed class PlaybackPoolTests
 {
     [Fact]
+    public void AnExhaustedClipBudgetRejectsAdmissionBeforeStealingTheCurrentVoice()
+    {
+        using var engine = new SoundFlow.Backends.OpenAL.Engine();
+        using var device = engine.CreateRenderDevice(OpenAlPlaybackTests.Stereo,
+            new SoundFlow.Backends.OpenAL.DeviceConfiguration { PreparedClipBytes = 4096 });
+        using var pool = device.CreatePool(new() { Capacity = 1 });
+        using var current = pool.Play(PreparedClipTests.Tone(1024), new() { Looping = true });
+        Assert.False(pool.TryPlay(PreparedClipTests.Tone(1024), out _, new() { Priority = 100 }));
+        Assert.Null(current.Outcome); Assert.Equal(1, pool.GetSnapshot().Occupied);
+        Assert.Equal(0, pool.GetSnapshot().Stolen);
+    }
+    [Fact]
     public void PoolStealsOnlyLowerPrioritiesAndStaleLeasesCannotControlReusedVoices()
     {
         using var engine = new SoundFlow.Backends.OpenAL.Engine();

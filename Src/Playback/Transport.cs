@@ -181,9 +181,6 @@ public sealed class Transport : IDisposable
         _leaveOpen = leaveOpen;
         _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
         _dataProvider.EndOfStreamReached += ProviderEnded;
-        var initialChannels = format.Channels > 0 ? format.Channels : 2;
-        var initialSampleRate = format.SampleRate > 0 ? format.SampleRate : 44100;
-        var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
         _resampleBuffer = [];
         
 

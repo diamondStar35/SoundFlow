@@ -97,7 +97,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
                     _position = _block.EndPosition; _session.Release(_block); _block = null; _offset = 0;
                 }
             }
-            // Retain the existing internal test/diagnostic count as consumed PCM, not producer lookahead.
+            // Count consumed PCM only; silence inserted for a missing producer block is not content progress.
             LastConsumedSamples = written;
             if (_session.Done && _session.ReadyCount == 0 && _block == null)
             {

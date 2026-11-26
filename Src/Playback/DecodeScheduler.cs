@@ -111,8 +111,12 @@ public sealed class DecodeScheduler : IDisposable
     /// <summary>Rejects lifecycle operations from a decoding callback before any state changes.</summary>
     public void ValidateDisposal()
     {
-        if (_current == this)
+        if (_current != null)
             throw new InvalidOperationException("Dispose the engine/session outside its decoding callback.");
+    }
+    internal static void ValidateControlThread()
+    {
+        if (_current != null) throw new InvalidOperationException("Transport controls and offline waits cannot run inside a decoding worker's provider callback.");
     }
     /// <summary>Cancels and drains owned sessions, then joins the fixed workers. Noncooperative custom reads must return.</summary>
     public void Dispose()
