@@ -77,7 +77,7 @@ internal sealed class SoftwareSource : Source
         public override void Process(Span<float> buffer, int channels) => source.PublishBuffer(buffer, source.Device.Format);
     }
 
-    private sealed class BorrowedProvider(IDataProvider inner) : IDataProvider
+    private sealed class BorrowedProvider(IDataProvider inner) : ICancellableDataProvider
     {
         public IDataProvider Inner => inner;
         public int Position => inner.Position;
@@ -90,6 +90,8 @@ internal sealed class SoftwareSource : Source
         public event EventHandler<EventArgs> EndOfStreamReached { add => inner.EndOfStreamReached += value; remove => inner.EndOfStreamReached -= value; }
         public event EventHandler<PositionChangedEventArgs> PositionChanged { add => inner.PositionChanged += value; remove => inner.PositionChanged -= value; }
         public int ReadSamples(Span<float> buffer) => inner.ReadSamples(buffer);
+        public int ReadSamples(Span<float> buffer, CancellationToken cancellationToken)
+            => inner is ICancellableDataProvider cooperative ? cooperative.ReadSamples(buffer, cancellationToken) : inner.ReadSamples(buffer);
         public void Seek(int offset) => inner.Seek(offset);
         public void Dispose() { }
     }

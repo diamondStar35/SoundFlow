@@ -449,6 +449,13 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
         }
     }
 
+    /// <summary>Prepares built-in buffered inputs for an offline processing step. Live callbacks must never call this method.</summary>
+    public virtual void PrepareForRender()
+    {
+        foreach (var input in _inputsSnapshot)
+            if (input.Enabled && !input.Mute) input.PrepareForRender();
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MixBuffers(ReadOnlySpan<float> source, Span<float> destination)
     {

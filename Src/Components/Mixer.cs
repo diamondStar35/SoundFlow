@@ -57,6 +57,14 @@ public sealed class Mixer : SoundComponent
     }
 
     /// <inheritdoc />
+    public override void PrepareForRender()
+    {
+        base.PrepareForRender();
+        foreach (var child in _componentsSnapshot)
+            if (child.Enabled && !child.Mute) child.PrepareForRender();
+    }
+
+    /// <inheritdoc />
     public override string Name { get; set; }
 
     /// <summary>

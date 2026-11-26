@@ -9,6 +9,8 @@ namespace SoundFlow.Playback;
 /// <summary>Adapts one software graph to a continuous native source input.</summary>
 public sealed class GraphProvider(SoundComponent graph, bool leaveOpen) : IDataProvider
 {
+    /// <summary>Prepares buffered graph leaves for deterministic offline rendering, outside a decode worker.</summary>
+    public void PrepareForRender() => graph.PrepareForRender();
     /// <inheritdoc />
     public int Position { get; private set; }
     /// <inheritdoc />

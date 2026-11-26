@@ -28,6 +28,15 @@ public delegate void AudioProcessCallback(Span<float> samples, Capability capabi
 /// </summary>
 public abstract class Engine : FeatureHost, IDisposable
 {
+    private readonly object _decodingGate = new();
+    private Playback.DecodeScheduler? _decoding;
+    /// <summary>Engine-wide worker and buffering limits. Configure before creating any players or devices.</summary>
+    public Playback.PlaybackConfiguration PlaybackConfiguration { get; init; } = new();
+    /// <summary>Shared PCM producer scheduler; obtaining it starts the configured fixed worker set.</summary>
+    public Playback.DecodeScheduler Decoding
+    {
+        get { lock (_decodingGate) { ObjectDisposedException.ThrowIf(IsDisposed, this); return _decoding ??= new(PlaybackConfiguration); } }
+    }
     private SoundComponent? _soloedComponent;
     private readonly object _lock = new();
     private readonly Dictionary<string, List<CodecRegistration>> _codecRegistry = new();
@@ -563,6 +572,8 @@ public abstract class Engine : FeatureHost, IDisposable
         if (IsDisposed)
             return;
 
+        if (disposing) { _decoding?.ValidateDisposal(); _decoding?.CancelAll(); }
+
         try
         {
             if (disposing)
@@ -572,7 +583,7 @@ public abstract class Engine : FeatureHost, IDisposable
                 CleanupBackend();
             }
         }
-        finally { IsDisposed = true; }
+        finally { try { if (disposing) _decoding?.Dispose(); } finally { IsDisposed = true; } }
     }
 
     /// <summary>

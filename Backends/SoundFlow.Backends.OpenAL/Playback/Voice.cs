@@ -30,7 +30,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     private readonly Queue<uint> _free;
     private readonly Queue<(uint Buffer, int Start, int End, int Frames, float Speed)> _queued;
     private readonly Transport _transport;
-    private readonly DecodePump _pump;
+    private readonly DecodeSession _pump;
     private SoundModifier[] _modifiers = [];
     private volatile PlaybackState _state;
     private float _gain = 1;
@@ -62,7 +62,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
             Al.CheckAl("Allocate queue buffers");
             foreach (var buffer in _buffers) _free.Enqueue(buffer);
             _transport = new Transport(format, provider, leaveOpen);
-            _pump = new DecodePump(_transport, owner.Config.BufferFrames * format.Channels, _buffers.Length, ProcessPcm);
+            _pump = new DecodeSession(owner.Owner.Engine.Decoding, _transport, owner.Config.BufferFrames, _buffers.Length, ProcessPcm, provider is GraphProvider, owner.Offline && provider is GraphProvider graph ? graph.PrepareForRender : null);
             ApplySpatial(new SourceSettings { Spatialize = spatial });
             ApplySceneDistance(owner.DistanceModel);
         }
@@ -197,6 +197,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
             var record = _queued.Dequeue(); _playedPosition = record.End; _free.Enqueue(buffer);
         }
         if (_state != PlaybackState.Playing) return;
+        if (wait && DataProvider is GraphProvider graph) graph.PrepareForRender();
         _pump.Request();
         while (_free.Count > 0 && _pump.TryTake(wait, out var block))
         {

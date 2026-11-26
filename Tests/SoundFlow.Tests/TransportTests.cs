@@ -26,7 +26,7 @@ public sealed class TransportTests
         Assert.True(player.Seek(2));
         player.Play();
         var output = new float[5];
-        player.Process(output, 1);
+        player.PrepareForRender(); player.Process(output, 1);
         Assert.Equal(new[] { .3f, .4f, .3f, .4f, .3f }, output);
     }
 
@@ -39,7 +39,7 @@ public sealed class TransportTests
         Assert.True(player.Seek(6));
         player.Play();
         var first = new float[2]; var second = new float[2];
-        player.Process(first, 1); player.Process(second, 1);
+        player.PrepareForRender(); player.Process(first, 1); player.PrepareForRender(); player.Process(second, 1);
         Assert.Equal(new[] { .6f, .5f }, first);
         Assert.Equal(new[] { .4f, .3f }, second);
     }
@@ -52,7 +52,7 @@ public sealed class TransportTests
         player.PlaybackSpeed = -2;
         player.Seek(8); player.Play();
         var first = new float[2]; var second = new float[2];
-        player.Process(first, 1); player.Process(second, 1);
+        player.PrepareForRender(); player.Process(first, 1); player.PrepareForRender(); player.Process(second, 1);
         Assert.Equal(new[] { .8f, .6f }, first);
         Assert.Equal(new[] { .4f, .2f }, second);
     }
@@ -70,8 +70,8 @@ public sealed class TransportTests
         var rendered = new List<float>(); var block = new float[512];
         for (var i = 0; i < 400 && player.State == PlaybackState.Playing; i++)
         {
-            Array.Clear(block); player.Process(block, 1);
-            rendered.AddRange(block.Take(player.Transport.LastReadSamples));
+            Array.Clear(block); player.PrepareForRender(); player.Process(block, 1);
+            rendered.AddRange(block.Take(player.LastConsumedSamples));
         }
         Assert.Equal(PlaybackState.Stopped, player.State);
         Assert.InRange(rendered.Count, (int)(48000 / speed * .8), (int)(48000 / speed * 1.2));
@@ -90,7 +90,7 @@ public sealed class TransportTests
         using var player = new SoundPlayer(engine, Mono, provider) { PlaybackSpeed = 1.5f };
         player.Play();
         var block = new float[512];
-        for (var i = 0; i < 100 && player.State == PlaybackState.Playing; i++) player.Process(block, 1);
+        for (var i = 0; i < 100 && player.State == PlaybackState.Playing; i++) { player.PrepareForRender(); player.Process(block, 1); }
         Assert.Equal(PlaybackState.Stopped, player.State);
     }
 
@@ -99,7 +99,7 @@ public sealed class TransportTests
     {
         using var engine = new HeadlessEngine();
         using var player = new SoundPlayer(engine, Mono, new RawDataProvider(new float[48000], 48000)) { PlaybackSpeed = 2 };
-        player.Play(); player.Process(new float[512], 1);
+        player.Play(); player.PrepareForRender(); player.Process(new float[512], 1);
         Assert.InRange(player.Time, 1023f / 48000, 1025f / 48000);
     }
 }

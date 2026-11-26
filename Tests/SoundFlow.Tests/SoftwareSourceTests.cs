@@ -17,7 +17,7 @@ public sealed class SoftwareSourceTests
         using var device = new SoftwareDevice(engine);
         using var source = device.CreateSource(new SoundFlow.Playback.Clip(new[] { .1f, .2f, .3f, .4f }, TransportTests.Mono));
         source.Play();
-        var output = new float[8]; device.MasterMixer.Process(output, 2);
+        var output = new float[8]; device.MasterMixer.PrepareForRender(); device.MasterMixer.Process(output, 2);
         Assert.Equal(new[] { .1f, .1f, .2f, .2f, .3f, .3f, .4f, .4f }, output);
     }
 
@@ -31,7 +31,7 @@ public sealed class SoftwareSourceTests
         source.Play();
         old.TransferSourcesTo(next);
         old.Dispose();
-        var output = new float[8]; next.MasterMixer.Process(output, 2);
+        var output = new float[8]; next.MasterMixer.PrepareForRender(); next.MasterMixer.Process(output, 2);
         Assert.Same(next, source.Device);
         Assert.False(source.IsDisposed);
         Assert.Equal(new[] { .1f, .1f, .2f, .2f, .3f, .3f, .4f, .4f }, output);
