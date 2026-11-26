@@ -182,7 +182,7 @@ public sealed class Transport : IDisposable
         _dataProvider = dataProvider ?? throw new ArgumentNullException(nameof(dataProvider));
         _dataProvider.EndOfStreamReached += ProviderEnded;
         _resampleBuffer = [];
-        
+
 
         // Initialize with default fast config
         _timeStretchConfig = WsolaConfig.FromPreset(WsolaPerformancePreset.Fast);
