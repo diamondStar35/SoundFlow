@@ -80,7 +80,22 @@ if (!pcm.Any(s => Math.Abs(s) > .01)) throw new Exception("No rendered PCM");
 if (Directory.EnumerateFiles(AppContext.BaseDirectory, "*", SearchOption.AllDirectories)
     .Any(p => Path.GetFileName(p).Contains("miniaudio", StringComparison.OrdinalIgnoreCase)))
     throw new Exception("MiniAudio leaked into the OpenAL consumer");
-Console.WriteLine("PASS: isolated NuGet consumer renders OpenAL/EFX without MiniAudio.");
+if (!device.TryGetFeature<IPreparedClips>(out var clips)) throw new Exception("No prepared clips");
+var clip = new SoundFlow.Playback.Clip(Enumerable.Range(0, 2048).Select(i => .1f * MathF.Sin(i * .1f)).ToArray(), mono);
+using var prepared = clips.Prepare(clip);
+using var native = prepared.CreateSource(); native.Play(); device.Render(pcm);
+using var pool = device.CreatePool(new() { Capacity = 1 });
+using var first = pool.Play(clip, new() { Priority = 1 });
+using var second = pool.Play(clip, new() { Priority = 2 });
+if (first.Outcome?.Reason != PlaybackEndReason.Stolen) throw new Exception("Pool did not steal its lower-priority voice");
+if (effects.SupportedEffects.Contains(typeof(ConvolutionSettings)))
+{
+    var response = new float[1024]; response[0] = .5f;
+    using var convolution = effects.CreateSlot(new ConvolutionSettings { ImpulseResponse = new SoundFlow.Playback.Clip(response, mono) });
+    if (!second.Source.TryGetFeature<IEffectSends>(out var wet)) throw new Exception("No native wet routing");
+    wet.SetSend(0, convolution); device.Render(pcm);
+}
+Console.WriteLine("PASS: isolated NuGet consumer renders OpenAL/EFX, prepared clips and pooled playback without MiniAudio.");
 ''')
     subprocess.run(["dotnet", "restore", str(work / "Consumer.csproj"), "--configfile", str(work / "NuGet.Config"), "--nologo"], check=True)
     subprocess.run(["dotnet", "run", "--project", str(work / "Consumer.csproj"), "-c", "Release", "--no-restore"], check=True)
