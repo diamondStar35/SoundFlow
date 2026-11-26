@@ -10,6 +10,18 @@ namespace SoundFlow.Tests;
 public sealed class BackendContractTests
 {
     [Fact]
+    public void IndependentProcessorsCanChangeChannelsAndExposeCapturedInput()
+    {
+        var builder = new SoundFlow.Processing.Builder(); var point = builder.Capture("mono");
+        builder.Add(format => new BackendContract.StereoProcessor(format));
+        using var runner = builder.Build().CreateRunner(TransportTests.Mono, 8);
+        var captures = runner.CreateCaptures(); var output = new float[16];
+        runner.Process(Enumerable.Repeat(.5f, 8).ToArray(), output, 8, captures);
+        Assert.Equal(1, runner.GetFormat(point).Channels); Assert.Equal(2, runner.OutputFormat.Channels);
+        Assert.Equal(.5f, output[8]); Assert.Equal(-.5f, output[9]);
+    }
+
+    [Fact]
     public void UnsupportedTransfersAreRejectedBeforeMovingAnySource()
     {
         using var engine = new HeadlessEngine();
