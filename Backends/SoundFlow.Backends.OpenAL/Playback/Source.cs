@@ -16,20 +16,27 @@ namespace SoundFlow.Backends.OpenAL.Playback;
 internal sealed class Source : CoreSource, INativeSource
 {
     public Voice Voice { get; }
-    internal Source(Context context, IDataProvider provider, AudioFormat format, bool leaveOpen, Devices.PreparedBuffer? prepared = null)
+    internal Source(Context context, IDataProvider provider, AudioFormat format, bool leaveOpen, Devices.PreparedBuffer? prepared = null, SourceOptions? options = null)
         : base(context.Owner, provider, format)
     {
         try
         {
             Voice = new Voice(context, provider, format, leaveOpen, false,
-                (samples, count) => PublishBuffer(samples.AsSpan(0, count)), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error), BeginPlayback);
+                (samples, count) => PublishBuffer(samples.AsSpan(0, count), Voice!.RenderedFormat), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error), BeginPlayback, options);
             context.Sources.Add(Voice);
             RegisterFeature<ISourcePitch>(Voice);
             RegisterFeature<ISourceRendering>(Voice);
-            if (context.HasEfx) RegisterFeature<IEffectSends>(Voice);
+            if (context.HasEfx)
+            {
+                RegisterFeature<IEffectSends>(Voice);
+                if (!Voice.IsPrepared) RegisterFeature<IProcessingSends>(Voice);
+            }
         }
         catch { ReleaseProviderOwnership(); throw; }
     }
+    public override AudioFormat RenderedFormat => Voice.RenderedFormat;
+    public override SoundFlow.Processing.Chain? ProcessingChain => Voice.ProcessingChain;
+    public override void ConfigureProcessing(SoundFlow.Processing.Chain? chain) => Voice.ConfigureProcessing(chain);
     public override bool SupportsSoftwareProcessing => !Voice.IsPrepared;
     public override PlaybackState State => Voice.State;
     public override IDataProvider DataProvider => Voice.DataProvider;

@@ -34,7 +34,9 @@ public sealed record DiagnosticsSnapshot
     public IReadOnlyList<string> Extensions { get; init; } = [];
     /// <summary>Maximum auxiliary sends per source, distinct from the effect-slot count.</summary>
     public int AuxiliarySends { get; init; }
-    /// <summary>Current source count.</summary>
+    /// <summary>Current native wet-only endpoints consuming software captures, additional to logical sources.</summary>
+    public int ProcessingEndpoints { get; init; }
+    /// <summary>Current logical source count; excludes graph feeds and internal processing endpoints.</summary>
     public int Sources { get; init; }
     /// <summary>Current effect-slot count.</summary>
     public int EffectSlots { get; init; }

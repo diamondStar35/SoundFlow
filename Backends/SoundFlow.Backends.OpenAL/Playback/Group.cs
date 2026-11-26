@@ -10,7 +10,6 @@ internal sealed unsafe class Group : SourceGroup
 {
     internal readonly Devices.Context Context;
     private readonly IReadOnlyList<CoreSource> _sources;
-    private readonly uint[] _ids;
     public override PlaybackDevice Device => Context.Owner;
     public override IReadOnlyList<CoreSource> Sources => _sources;
     public override bool IsDisposed => _disposed;
@@ -22,7 +21,6 @@ internal sealed unsafe class Group : SourceGroup
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Length == 0 || sources.Distinct().Count() != sources.Length) throw new ArgumentException("A group needs distinct source members.", nameof(sources));
         _sources = Array.AsReadOnly(sources.ToArray());
-        _ids = sources.Select(source => context.GetVoice(source).Id).ToArray();
     }
 
     private Voice[] Validate()
@@ -45,10 +43,11 @@ internal sealed unsafe class Group : SourceGroup
             Context.Worker.Invoke(() =>
             {
                 Validate();
-                fixed (uint* ids = _ids)
+                var nativeIds = voices.SelectMany(voice => voice.NativeIds).ToArray();
+                fixed (uint* ids = nativeIds)
                 {
-                    if (timestamp.HasValue) Context.Al.alSourcePlayAtTimevSOFT(_ids.Length, ids, timestamp.Value);
-                    else Context.Al.alSourcePlayv(_ids.Length, ids);
+                    if (timestamp.HasValue) Context.Al.alSourcePlayAtTimevSOFT(nativeIds.Length, ids, timestamp.Value);
+                    else Context.Al.alSourcePlayv(nativeIds.Length, ids);
                 }
                 Context.Al.CheckAl("Start source group");
                 foreach (var voice in voices) voice.CompleteStart(timestamp);
@@ -64,7 +63,8 @@ internal sealed unsafe class Group : SourceGroup
     public override void Pause() => Context.Worker.Invoke(() =>
     {
         var voices = Validate();
-        fixed (uint* ids = _ids) Context.Al.alSourcePausev(_ids.Length, ids);
+        var nativeIds = voices.SelectMany(voice => voice.NativeIds).ToArray();
+        fixed (uint* ids = nativeIds) Context.Al.alSourcePausev(nativeIds.Length, ids);
         Context.Al.CheckAl("Pause source group");
         foreach (var voice in voices) voice.PauseAfterNativeCommand();
     });
@@ -74,7 +74,8 @@ internal sealed unsafe class Group : SourceGroup
         var voices = Context.Worker.Invoke(() =>
         {
             var members = Validate();
-            fixed (uint* ids = _ids) Context.Al.alSourceStopv(_ids.Length, ids);
+            var nativeIds = members.SelectMany(voice => voice.NativeIds).ToArray();
+        fixed (uint* ids = nativeIds) Context.Al.alSourceStopv(nativeIds.Length, ids);
             Context.Al.CheckAl("Stop source group"); return members;
         });
         foreach (var source in _sources) source.Stop();

@@ -37,6 +37,7 @@ internal sealed unsafe partial class Voice
             Al.alSource3i(Id, 0x20006, (int)(((Slot?)slot)?.Id ?? 0), index, (int)next);
             try { Al.CheckAl("Attach source effect send"); }
             catch { if (next != 0) Al.alDeleteFilters(1, &next); throw; }
+            RemoveProcessingSend(index);
             if (_sends.Remove(index, out var old) && old.Filter != 0) { var id = old.Filter; Al.alDeleteFilters(1, &id); }
             if (slot != null) _sends[index] = ((Slot)slot, next);
         });
@@ -60,6 +61,8 @@ internal sealed unsafe partial class Voice
     }
     internal void DetachSlot(Slot slot)
     {
+        foreach (var pair in _processingSends.ToArray())
+            if (pair.Value.Sends.TryGetValue(pair.Key, out var route) && route.Slot == slot) RemoveProcessingSend(pair.Key);
         for (var i = 0; i < _owner.MaximumSends; i++)
             if (_sends.TryGetValue(i, out var send) && send.Slot == slot) SetSend(i, null);
     }

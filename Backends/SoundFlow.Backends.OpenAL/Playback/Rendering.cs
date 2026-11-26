@@ -39,21 +39,21 @@ internal sealed unsafe partial class Voice : ISourceRendering
         _owner.ApplyNativeUpdates(() =>
         {
             // Relax the old bounds first so replacing [low,high] with a disjoint valid range is accepted by AL.
-            Al.alSourcef(Id, 0x100D, 0); Al.alSourcef(Id, 0x100E, value.MaximumGain); Al.alSourcef(Id, 0x100D, value.MinimumGain);
-            if (Capabilities.HasFlag(RenderingCapabilities.DistanceModel)) Al.alSourcei(Id, 0xD000, Devices.Context.DistanceToken(value.DistanceModel ?? _owner.DistanceModel));
+            foreach (var endpoint in NativeIds) { Al.alSourcef(endpoint, 0x100D, 0); Al.alSourcef(endpoint, 0x100E, value.MaximumGain); Al.alSourcef(endpoint, 0x100D, value.MinimumGain); }
+            if (Capabilities.HasFlag(RenderingCapabilities.DistanceModel)) foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0xD000, Devices.Context.DistanceToken(value.DistanceModel ?? _owner.DistanceModel));
             if (Capabilities.HasFlag(RenderingCapabilities.Radius)) Al.alSourcef(Id, 0x1031, value.Radius);
             if (Capabilities.HasFlag(RenderingCapabilities.StereoAngles))
             {
                 var stereo = value.StereoAngles ?? new Vector2(MathF.PI / 6, -MathF.PI / 6);
                 float* pointer = stackalloc float[2] { stereo.X, stereo.Y }; Al.alSourcefv(Id, 0x1030, pointer);
             }
-            if (Capabilities.HasFlag(RenderingCapabilities.Resampler)) Al.alSourcei(Id, 0x1212, value.Resampler ?? _owner.DefaultResampler);
+            if (Capabilities.HasFlag(RenderingCapabilities.Resampler)) foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0x1212, value.Resampler ?? _owner.DefaultResampler);
             if (Capabilities.HasFlag(RenderingCapabilities.DirectChannels)) Al.alSourcei(Id, 0x1033, (int)value.ChannelMapping);
             if (_owner.HasEfx)
             {
                 Al.alSourcei(Id, 0x2000A, value.DirectGainHFAutomatic ? 1 : 0);
-                Al.alSourcei(Id, 0x2000B, value.SendGainAutomatic ? 1 : 0);
-                Al.alSourcei(Id, 0x2000C, value.SendGainHFAutomatic ? 1 : 0);
+                foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0x2000B, value.SendGainAutomatic ? 1 : 0);
+                foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0x2000C, value.SendGainHFAutomatic ? 1 : 0);
             }
             Al.CheckAl("Apply rendering settings");
             _rendering = value;
@@ -68,6 +68,6 @@ internal sealed unsafe partial class Voice : ISourceRendering
     internal void ApplySceneDistance(DistanceModel model)
     {
         if (!_rendering.DistanceModel.HasValue && Capabilities.HasFlag(RenderingCapabilities.DistanceModel))
-            Al.alSourcei(Id, 0xD000, Devices.Context.DistanceToken(model));
+            foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0xD000, Devices.Context.DistanceToken(model));
     }
 }

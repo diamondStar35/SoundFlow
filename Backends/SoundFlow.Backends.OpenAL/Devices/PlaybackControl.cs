@@ -66,7 +66,7 @@ internal sealed unsafe partial class Context : IPlaybackTiming, ISourceGroups, I
         Worker.Invoke(() =>
         {
             GetVoice(source);
-            Al.alSourcePlayAtTimeSOFT(voice.Id, nanoseconds); Al.CheckAl("Schedule source playback");
+            fixed (uint* ids = voice.NativeIds) Al.alSourcePlayAtTimevSOFT(voice.NativeIds.Length, ids, nanoseconds); Al.CheckAl("Schedule source playback");
             voice.CompleteStart(nanoseconds);
         });
     }

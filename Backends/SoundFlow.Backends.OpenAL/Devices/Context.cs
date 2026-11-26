@@ -135,11 +135,11 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         _ => throw new NotSupportedException($"OpenAL output layout with {channels} channels is unsupported.")
     };
 
-    internal CoreSource CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen, bool spatial = false)
+    internal CoreSource CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen, bool spatial = false, SoundFlow.Playback.SourceOptions? options = null)
         => Worker.Invoke<CoreSource>(() =>
         {
             EnsureOutsideBatch();
-            return spatial ? new SpatialSource(this, provider, format, leaveOpen) : new Source(this, provider, format, leaveOpen);
+            return spatial ? new SpatialSource(this, provider, format, leaveOpen, options: options) : new Source(this, provider, format, leaveOpen, options: options);
         });
 
     internal void Start() => Worker.Invoke(() =>
@@ -230,6 +230,7 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         ReusedSources = ReusedSources, PreparedClipBytes = _clipBytes, PreparedClips = _clips.Count, IdleSources = _idleSources.Count,
         Backend = "OpenAL Soft", Library = $"{_version} ({Al.LibraryPath})", Device = _deviceName,
         Format = Owner.Format, Extensions = Array.AsReadOnly(_extensions), AuxiliarySends = MaximumSends,
+        ProcessingEndpoints = Sources.Sum(s => s.ProcessingEndpoints),
         Sources = Sources.Count(s => !s.IsGraphFeed), EffectSlots = Slots.Count, Underruns = Sources.Sum(s => s.Underruns),
         Connected = Offline || !Al.HasAlcExtension(Device, "ALC_EXT_disconnect") || Al.DeviceInteger(Device, 0x313) != 0,
         HrtfStatus = HasHrtf ? HrtfStatus() : "Unavailable",

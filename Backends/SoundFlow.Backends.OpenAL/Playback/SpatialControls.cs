@@ -32,19 +32,22 @@ internal sealed unsafe partial class Voice
         if (!_owner.HasExtension("AL_SOFT_source_spatialize")) throw new NotSupportedException("Explicit 2D/3D source intent requires AL_SOFT_source_spatialize.");
         _owner.ApplyNativeUpdates(() =>
         {
-            Al.alSource3f(Id, 0x1004, value.Position.X, value.Position.Y, value.Position.Z);
-            Al.alSource3f(Id, 0x1006, value.Velocity.X, value.Velocity.Y, value.Velocity.Z);
-            Al.alSource3f(Id, 0x1005, value.Direction.X, value.Direction.Y, value.Direction.Z);
-            Al.alSourcei(Id, 0x202, value.Relative ? 1 : 0);
-            Al.alSourcef(Id, 0x1020, value.ReferenceDistance); Al.alSourcef(Id, 0x1023, value.MaximumDistance);
-            Al.alSourcef(Id, 0x1021, value.RolloffFactor);
-            Al.alSourcef(Id, 0x1001, value.ConeInnerAngle); Al.alSourcef(Id, 0x1002, value.ConeOuterAngle); Al.alSourcef(Id, 0x1022, value.ConeOuterGain);
-            if (_owner.HasExtension("AL_SOFT_source_spatialize")) Al.alSourcei(Id, 0x1214, value.Spatialize ? 1 : 0);
+            foreach (var endpoint in NativeIds)
+            {
+            Al.alSource3f(endpoint, 0x1004, value.Position.X, value.Position.Y, value.Position.Z);
+            Al.alSource3f(endpoint, 0x1006, value.Velocity.X, value.Velocity.Y, value.Velocity.Z);
+            Al.alSource3f(endpoint, 0x1005, value.Direction.X, value.Direction.Y, value.Direction.Z);
+            Al.alSourcei(endpoint, 0x202, value.Relative ? 1 : 0);
+            Al.alSourcef(endpoint, 0x1020, value.ReferenceDistance); Al.alSourcef(endpoint, 0x1023, value.MaximumDistance);
+            Al.alSourcef(endpoint, 0x1021, value.RolloffFactor);
+            Al.alSourcef(endpoint, 0x1001, value.ConeInnerAngle); Al.alSourcef(endpoint, 0x1002, value.ConeOuterAngle); Al.alSourcef(endpoint, 0x1022, value.ConeOuterGain);
+            if (_owner.HasExtension("AL_SOFT_source_spatialize")) Al.alSourcei(endpoint, 0x1214, value.Spatialize ? 1 : 0);
             if (_owner.HasEfx)
             {
-                Al.alSourcef(Id, 0x20009, value.ConeOuterGainHF);
-                Al.alSourcef(Id, 0x20007, value.AirAbsorptionFactor);
-                Al.alSourcef(Id, 0x20008, value.RoomRolloffFactor);
+                Al.alSourcef(endpoint, 0x20009, value.ConeOuterGainHF);
+                Al.alSourcef(endpoint, 0x20007, value.AirAbsorptionFactor);
+                Al.alSourcef(endpoint, 0x20008, value.RoomRolloffFactor);
+            }
             }
             Al.CheckAl("Apply source spatial settings");
             _spatial = value;
@@ -56,7 +59,7 @@ internal sealed unsafe partial class Voice
         set
         {
             SpatialValidation.Number(value, float.Epsilon, float.MaxValue, nameof(value));
-            Control(() => { Al.alSourcef(Id, 0x1003, value); Al.CheckAl("Set native pitch"); _pitch = value; });
+            Control(() => { foreach (var endpoint in NativeIds) Al.alSourcef(endpoint, 0x1003, value); Al.CheckAl("Set native pitch"); _pitch = value; });
         }
     }
 }

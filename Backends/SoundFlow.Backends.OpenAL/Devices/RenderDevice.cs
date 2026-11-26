@@ -40,6 +40,10 @@ internal sealed class RenderDevice : CoreRenderDevice
         if (_context.HasEfx) RegisterFeature<IEffects>(_context);
         if (_context.HasHrtf) RegisterFeature<IHrtfAudio>(_context);
     }
+    public override Source CreateSource(IDataProvider provider, AudioFormat format, SoundFlow.Playback.SourceOptions options, bool leaveOpen = false)
+        => _context.CreateSource(provider, format, leaveOpen, options: options);
+    public override SpatialSource CreateSpatialSource(IDataProvider provider, AudioFormat format, SoundFlow.Playback.SourceOptions options, bool leaveOpen = false)
+        => (SpatialSource)_context.CreateSource(provider, format, leaveOpen, true, options);
     public override Source CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false) => _context.CreateSource(provider, format, leaveOpen);
     public override SpatialSource CreateSpatialSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false)
         => (SpatialSource)_context.CreateSource(provider, format, leaveOpen, true);
