@@ -50,10 +50,11 @@ public sealed class Chain
     public static Chain Empty { get; } = new Builder().Build();
     internal readonly object Owner;
     internal readonly Func<AudioFormat, Processor>[] Factories;
+    internal readonly Point[] CapturePoints;
     /// <summary>Named points captured by the builder.</summary>
     public IReadOnlyList<Point> Points { get; }
     internal Chain(object owner, Func<AudioFormat, Processor>[] factories, Point[] points)
-    { Owner = owner; Factories = factories; Points = Array.AsReadOnly(points); }
+    { Owner = owner; Factories = factories; CapturePoints = points; Points = Array.AsReadOnly(points); }
     /// <summary>Finds a declared point by its exact ordinal name.</summary>
     public Point GetPoint(string name) => Points.FirstOrDefault(point => point.Name == name) ?? throw new ArgumentException("Unknown processing point.", nameof(name));
     /// <summary>Creates exclusively owned processor state and bounded scratch storage for a backend's producer.</summary>

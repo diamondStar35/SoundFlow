@@ -53,8 +53,11 @@ public sealed class DecodeSession : IDisposable
     /// <summary>Owned, serialized DSP state. Backends edit it only through Change while stopped.</summary>
     public Runner Processing { get; private set; }
     /// <summary>Final packet format, including optional endpoint channel conversion.</summary>
-    public AudioFormat OutputFormat => Processing.OutputFormat with { Channels = _endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels,
-        Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels) };
+    public AudioFormat OutputFormat => Processing.OutputFormat with
+    {
+        Channels = _endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels,
+        Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels)
+    };
     private readonly Queue<Block> _ready;
     private readonly DecodeScheduler _scheduler;
     private readonly Transport _transport;
@@ -93,11 +96,13 @@ public sealed class DecodeSession : IDisposable
         frames = frames == 0 ? scheduler.Configuration.BufferFrames : frames;
         blocks = blocks == 0 ? scheduler.Configuration.QueueBuffers : blocks;
         if (frames <= 0 || blocks < 2) throw new ArgumentOutOfRangeException(nameof(frames));
+        if (endpointChannels is < 0 or > 32) throw new ArgumentOutOfRangeException(nameof(endpointChannels));
+        if (processing != null && (processing.InputFormat != (transport.Format with { Format = SampleFormat.F32 }) || processing.MaximumFrames != frames))
+            throw new ArgumentException("Runner input format and packet bound must match the transport.", nameof(processing));
         _frames = frames; _blocks = blocks; _endpointChannels = endpointChannels;
         Processing = processing ?? Chain.Empty.CreateRunner(transport.Format with { Format = Enums.SampleFormat.F32 }, frames);
         _free = new Queue<Block>(blocks); _ready = new Queue<Block>(blocks);
-        RebuildPackets(); ResetProcessing();
-        try { scheduler.Register(this); } catch { Processing.Dispose(); throw; }
+        try { RebuildPackets(); ResetProcessing(); scheduler.Register(this); } catch { Processing.Dispose(); throw; }
     }
     private void RebuildPackets()
     {
@@ -114,24 +119,47 @@ public sealed class DecodeSession : IDisposable
     public void ReplaceProcessing(Runner replacement)
     {
         ArgumentNullException.ThrowIfNull(replacement);
+        if (ReferenceEquals(Processing, replacement)) throw new ArgumentException("Replacement state must be a different runner.", nameof(replacement));
         if (replacement.InputFormat != (_transport.Format with { Format = Enums.SampleFormat.F32 }) || replacement.MaximumFrames != _frames)
             throw new ArgumentException("Replacement input format and packet bound must match the transport.");
         Runner? old = null;
-        Change(() =>
+        try
         {
-            // Allocate every packet before publishing the replacement. Failed allocation retains the old runner.
-            var output = replacement.OutputFormat with { Channels = _endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels,
-                Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels) };
-            var packets = Enumerable.Range(0, _blocks).Select(_ => new Block(_frames, replacement, output, _version + 1)).ToArray();
-            replacement.Reset();
-            lock (_gate)
+            Change(() =>
             {
-                old = Processing; Processing = replacement; _version++; _free.Clear(); _ready.Clear();
-                foreach (var packet in packets) _free.Enqueue(packet);
-            }
-        }, true);
-        old?.Dispose();
+                // Finish allocation and user Reset before publication. A failed replacement leaves the
+                // previous runner and its packets intact; no user code runs inside the commit below.
+                var output = replacement.OutputFormat with
+                {
+                    Channels = _endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels,
+                    Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels)
+                };
+                var packets = Enumerable.Range(0, _blocks).Select(_ => new Block(_frames, replacement, output, _version + 1)).ToArray();
+                var clock = new int[replacement.LatencyFrames];
+                var position = _transport.SamplePosition;
+                Array.Fill(clock, position);
+                replacement.Reset();
+                lock (_gate)
+                {
+                    old = Processing;
+                    Processing = replacement;
+                    _version++;
+                    _generation++;
+                    _free.Clear();
+                    _ready.Clear();
+                    foreach (var packet in packets) _free.Enqueue(packet);
+                    _clock = clock;
+                    _clockCursor = 0;
+                    _mappedPosition = position;
+                    _inputEnded = false;
+                    _done = false;
+                    _starved = false;
+                }
+            }, false);
+        }
+        finally { old?.Dispose(); }
     }
+
     private void MapPositions(Block block, int frames, int inputFrames, int start, int end)
     {
         block.Positions[0] = _mappedPosition;

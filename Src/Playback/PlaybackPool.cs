@@ -94,13 +94,15 @@ public sealed class PlaybackPool : IDisposable
             var victim = _active.Count < _capacity ? null : _active.Where(p => !p.Options.Protected && p.Options.Priority < options.Priority)
                 .OrderBy(p => p.Options.Priority).ThenBy(p => p.Sequence).FirstOrDefault();
             if (_active.Count >= _capacity && victim == null) { _rejected++; return false; }
-            PreparedClip? prepared = null; Source? source = null;
+            PreparedClip? prepared = null; Source? source = null; var userCallback = false;
             try
             {
                 if (options.Mode == PlaybackMode.Prepared && _device.TryGetFeature<IPreparedClips>(out var clips)) prepared = clips.Prepare(clip);
+                userCallback = true;
+                var processing = options.Mode == PlaybackMode.Processed ? new SourceOptions { Processing = options.ProcessingFactory?.Invoke() } : null;
+                userCallback = false;
                 // Prepare the incoming upload before interrupting the old sound. Once stolen, a playback never resumes.
                 if (victim != null) { Finish(victim, PlaybackEndReason.Stolen); _stolen++; }
-                var processing = options.Mode == PlaybackMode.Processed ? new SourceOptions { Processing = options.ProcessingFactory?.Invoke() } : null;
                 source = prepared != null
                     ? options.Spatial != null ? prepared.CreateSpatialSource() : prepared.CreateSource()
                     : processing != null ? options.Spatial != null ? _device.CreateSpatialSource(clip, processing) : _device.CreateSource(clip, processing)
@@ -112,12 +114,12 @@ public sealed class PlaybackPool : IDisposable
                     if (!source.TryGetFeature<ISourcePitch>(out var pitch)) throw new NotSupportedException("This backend does not provide native source pitch.");
                     pitch.Pitch = options.Pitch;
                 }
-                options.Configure?.Invoke(source);
+                userCallback = true; options.Configure?.Invoke(source); userCallback = false;
                 lease = new PlaybackLease(this, source, prepared, options, ++_played);
                 _active.Add(lease); source.PlaybackTerminated += lease.SourceTerminated;
                 source.Play(); return true;
             }
-            catch (InvalidOperationException)
+            catch (InvalidOperationException) when (!userCallback)
             {
                 if (lease != null) Finish(lease, PlaybackEndReason.Failed);
                 else { source?.Dispose(); prepared?.Dispose(); }

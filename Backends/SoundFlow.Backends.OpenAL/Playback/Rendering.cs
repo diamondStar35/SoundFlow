@@ -41,11 +41,11 @@ internal sealed unsafe partial class Voice : ISourceRendering
             // Relax the old bounds first so replacing [low,high] with a disjoint valid range is accepted by AL.
             foreach (var endpoint in NativeIds) { Al.alSourcef(endpoint, 0x100D, 0); Al.alSourcef(endpoint, 0x100E, value.MaximumGain); Al.alSourcef(endpoint, 0x100D, value.MinimumGain); }
             if (Capabilities.HasFlag(RenderingCapabilities.DistanceModel)) foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0xD000, Devices.Context.DistanceToken(value.DistanceModel ?? _owner.DistanceModel));
-            if (Capabilities.HasFlag(RenderingCapabilities.Radius)) Al.alSourcef(Id, 0x1031, value.Radius);
+            if (Capabilities.HasFlag(RenderingCapabilities.Radius)) foreach (var endpoint in NativeIds) Al.alSourcef(endpoint, 0x1031, value.Radius);
             if (Capabilities.HasFlag(RenderingCapabilities.StereoAngles))
             {
                 var stereo = value.StereoAngles ?? new Vector2(MathF.PI / 6, -MathF.PI / 6);
-                float* pointer = stackalloc float[2] { stereo.X, stereo.Y }; Al.alSourcefv(Id, 0x1030, pointer);
+                float* pointer = stackalloc float[2] { stereo.X, stereo.Y }; foreach (var endpoint in NativeIds) Al.alSourcefv(endpoint, 0x1030, pointer);
             }
             if (Capabilities.HasFlag(RenderingCapabilities.Resampler)) foreach (var endpoint in NativeIds) Al.alSourcei(endpoint, 0x1212, value.Resampler ?? _owner.DefaultResampler);
             if (Capabilities.HasFlag(RenderingCapabilities.DirectChannels)) Al.alSourcei(Id, 0x1033, (int)value.ChannelMapping);

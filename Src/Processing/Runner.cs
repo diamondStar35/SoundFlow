@@ -70,6 +70,7 @@ public sealed class Runner : IDisposable
     /// <summary>Removes a borrowed modifier after the owner has stopped consumption and quiesced its producer.</summary>
     public void RemoveModifier(SoundModifier modifier)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_legacy.Remove(modifier, out var adapter)) return;
         var index = _processors.IndexOf(adapter); _processors.RemoveAt(index); _scratch.RemoveAt(index + 1);
         adapter.Dispose(); adapter.Lease = 0; Reset();
@@ -82,7 +83,7 @@ public sealed class Runner : IDisposable
     private void ValidatePoint(Point point)
     {
         ArgumentNullException.ThrowIfNull(point);
-        if (!ReferenceEquals(point.Owner, Definition.Owner) || !Definition.Points.Contains(point)) throw new ArgumentException("The point belongs to another processing chain.", nameof(point));
+        if (!ReferenceEquals(point.Owner, Definition.Owner) || Array.IndexOf(Definition.CapturePoints, point) < 0) throw new ArgumentException("The point belongs to another processing chain.", nameof(point));
     }
     /// <summary>Computes explicitly requested compensation. None always returns zero, including for opted-in processors.</summary>
     public int GetCompensationFrames(Point point, LatencyCompensation policy)
@@ -92,11 +93,11 @@ public sealed class Runner : IDisposable
             .Where(processor => policy == LatencyCompensation.Automatic || processor.CompensateLatency).Sum(processor => processor.LatencyFrames);
     }
     /// <summary>Allocates one bounded capture set for a reusable producer packet; no allocations occur during Process or Drain.</summary>
-    public Dictionary<Point, float[]> CreateCaptures() => Definition.Points.ToDictionary(point => point,
+    public Dictionary<Point, float[]> CreateCaptures() => Definition.CapturePoints.ToDictionary(point => point,
         point => new float[checked(MaximumFrames * GetFormat(point).Channels)]);
     private void Capture(int position, int frames, Dictionary<Point, float[]> captures)
     {
-        foreach (var point in Definition.Points)
+        foreach (var point in Definition.CapturePoints)
             if (point.Index == position) _scratch[position].AsSpan(0, frames * GetFormat(point).Channels).CopyTo(captures[point]);
     }
     /// <summary>Processes one exact-size packet and its independent captures. Publication belongs to the caller after this call succeeds.</summary>
@@ -120,6 +121,8 @@ public sealed class Runner : IDisposable
     /// <summary>Drains upstream state through downstream processors. Captures before the active tail receive silence, not downstream tail audio.</summary>
     public int Drain(Span<float> output, Dictionary<Point, float[]> captures)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (output.Length < MaximumFrames * OutputFormat.Channels) throw new ArgumentException("Tail storage must hold one maximum-size output packet.", nameof(output));
         using var scope = Playback.ProcessingScope.Enter();
         while (_drainIndex < _processors.Count)
         {
@@ -144,6 +147,7 @@ public sealed class Runner : IDisposable
     /// <summary>Clears processor history after transport discontinuities; paused state is retained by not calling Reset.</summary>
     public void Reset()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         foreach (var processor in _processors) processor.Reset();
         foreach (var scratch in _scratch) Array.Clear(scratch);
         _drainIndex = 0; _tailUsed = 0;
@@ -155,7 +159,8 @@ public sealed class Runner : IDisposable
         List<Exception>? errors = null;
         foreach (var processor in _processors.AsEnumerable().Reverse())
         {
-            try { processor.Dispose(); } catch (Exception error) { (errors ??= []).Add(error); }
+            try { processor.Dispose(); }
+            catch (Exception error) { (errors ??= []).Add(error); }
             finally { processor.Lease = 0; }
         }
         if (errors != null) throw new AggregateException(errors);

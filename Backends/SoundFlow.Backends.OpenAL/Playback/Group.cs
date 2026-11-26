@@ -20,6 +20,7 @@ internal sealed unsafe class Group : SourceGroup
         Context = context;
         ArgumentNullException.ThrowIfNull(sources);
         if (sources.Length == 0 || sources.Distinct().Count() != sources.Length) throw new ArgumentException("A group needs distinct source members.", nameof(sources));
+        foreach (var source in sources) context.GetVoice(source);
         _sources = Array.AsReadOnly(sources.ToArray());
     }
 
@@ -75,7 +76,7 @@ internal sealed unsafe class Group : SourceGroup
         {
             var members = Validate();
             var nativeIds = members.SelectMany(voice => voice.NativeIds).ToArray();
-        fixed (uint* ids = nativeIds) Context.Al.alSourceStopv(nativeIds.Length, ids);
+            fixed (uint* ids = nativeIds) Context.Al.alSourceStopv(nativeIds.Length, ids);
             Context.Al.CheckAl("Stop source group"); return members;
         });
         foreach (var source in _sources) source.Stop();

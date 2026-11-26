@@ -33,7 +33,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     internal uint Id;
     private readonly uint[] _buffers;
     private readonly Queue<uint> _free;
-    private readonly Queue<(uint Buffer, int Start, int End, int Frames, float Speed)> _queued;
+    private readonly Queue<(uint Buffer, int End, int Frames)> _queued;
     private readonly Transport _transport;
     private readonly DecodeSession _pump = null!;
     private readonly PreparedBuffer? _prepared;
@@ -42,7 +42,12 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     internal bool IsPrepared => _prepared != null;
     internal static int FormatToken(int channels) => channels switch
     {
-        1 => 0x10010, 2 => 0x10011, 4 => 0x1206, 6 => 0x120C, 7 => 0x120F, 8 => 0x1212,
+        1 => 0x10010,
+        2 => 0x10011,
+        4 => 0x1206,
+        6 => 0x120C,
+        7 => 0x120F,
+        8 => 0x1212,
         _ => throw new NotSupportedException($"Unsupported source channel count {channels}.")
     };
     private SoundModifier[] _modifiers = [];
@@ -62,7 +67,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         _owner = owner; Format = format; _publish = publish; _ended = ended; _prepared = prepared; _onFailure = failed; _onBeginning = beginning;
         _buffers = new uint[prepared == null ? owner.Config.QueueBuffers : 0];
         _free = new Queue<uint>(_buffers.Length);
-        _queued = new Queue<(uint, int, int, int, float)>(_buffers.Length);
+        _queued = new Queue<(uint, int, int)>(_buffers.Length);
         try
         {
             if (provider.SampleRate != format.SampleRate) throw new ArgumentException("The source format must match its provider's sample rate.", nameof(format));
@@ -253,7 +258,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         var runner = (chain ?? Chain.Empty).CreateRunner(Format with { Format = SampleFormat.F32 }, _owner.Config.BufferFrames);
         try
         {
-            var nativeFormat = FormatToken(runner.OutputFormat.Channels);
+            _ = FormatToken(runner.OutputFormat.Channels);
             foreach (var modifier in _modifiers) runner.AddModifier(modifier);
             Control(() => { FlushQueue(); ClearProcessingRoutes(); });
             try { _pump.ReplaceProcessing(runner); }
@@ -265,12 +270,14 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     {
         ArgumentNullException.ThrowIfNull(modifier); RequireStoppedProcessing();
         if (_modifiers.Contains(modifier)) return;
+        Control(() => { FlushQueue(); ClearProcessingRoutes(); });
         _pump.Change(() => _pump.Processing.AddModifier(modifier), true);
         _modifiers = [.. _modifiers, modifier];
     }
     public void RemoveModifier(SoundModifier modifier)
     {
-        RequireStoppedProcessing(); _pump.Change(() => _pump.Processing.RemoveModifier(modifier), true);
+        RequireStoppedProcessing(); Control(() => { FlushQueue(); ClearProcessingRoutes(); });
+        _pump.Change(() => _pump.Processing.RemoveModifier(modifier), true);
         _modifiers = _modifiers.Where(m => m != modifier).ToArray();
     }
 
@@ -316,7 +323,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
                 foreach (var relay in _relays) relay.Upload(buffer, block.Captures[relay.Point].AsSpan(0, frames * relay.Format.Channels));
                 block.Positions.AsSpan(0, frames + 1).CopyTo(_positions[buffer]);
                 Al.alSourceQueueBuffers(Id, 1, &buffer); Al.CheckAl("Queue source PCM");
-                _queued.Enqueue((buffer, block.StartPosition, block.EndPosition, block.Count / RenderedFormat.Channels, block.Speed));
+                _queued.Enqueue((buffer, block.EndPosition, frames));
                 foreach (var relay in _relays) relay.Queue(buffer);
             }
             finally { _pump.Release(block!); }
