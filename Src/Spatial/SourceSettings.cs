@@ -5,6 +5,20 @@ namespace SoundFlow.Spatial;
 /// <summary>Spatial source properties. Distances use metres, velocities metres/second, and cone angles degrees.</summary>
 public sealed record SourceSettings
 {
+    /// <summary>Validates finite coordinates and authored distance/cone/environmental ranges before allocating or stealing a voice.</summary>
+    public void Validate()
+    {
+        static void Number(float value, float min, float max, string name)
+        { if (!float.IsFinite(value) || value < min || value > max) throw new ArgumentOutOfRangeException(name); }
+        foreach (var vector in new[] { Position, Velocity, Direction })
+            if (!float.IsFinite(vector.X) || !float.IsFinite(vector.Y) || !float.IsFinite(vector.Z)) throw new ArgumentException("Spatial vectors must be finite.");
+        Number(ReferenceDistance, float.Epsilon, float.MaxValue, nameof(ReferenceDistance));
+        Number(MaximumDistance, ReferenceDistance, float.MaxValue, nameof(MaximumDistance));
+        Number(RolloffFactor, 0, float.MaxValue, nameof(RolloffFactor));
+        Number(ConeInnerAngle, 0, 360, nameof(ConeInnerAngle)); Number(ConeOuterAngle, ConeInnerAngle, 360, nameof(ConeOuterAngle));
+        Number(ConeOuterGain, 0, 1, nameof(ConeOuterGain)); Number(ConeOuterGainHF, 0, 1, nameof(ConeOuterGainHF));
+        Number(AirAbsorptionFactor, 0, 10, nameof(AirAbsorptionFactor)); Number(RoomRolloffFactor, 0, 10, nameof(RoomRolloffFactor));
+    }
     /// <summary>Enables spatialization. Use mono PCM for positional sources; multichannel inputs default to nonspatial.</summary>
     public bool Spatialize { get; init; } = true;
     /// <summary>Interprets coordinates relative to the listener.</summary>

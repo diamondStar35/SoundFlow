@@ -22,6 +22,16 @@ public abstract class PlaybackDevice : Device
     private static readonly ConditionalWeakTable<IDataProvider, Source> ProviderOwners = new();
     private readonly Dictionary<Source, IDataProvider> _sources = new();
     private readonly object _sourceLock = new();
+    private readonly List<PlaybackPool> _pools = [];
+    /// <summary>Creates an explicitly budgeted pool for transient clips. Device disposal releases all of its pools.</summary>
+    public PlaybackPool CreatePool(PlaybackPoolOptions? options = null)
+    {
+        lock (_sourceLock)
+        {
+            ObjectDisposedException.ThrowIf(IsDisposed, this);
+            var pool = new PlaybackPool(this, options ?? new()); _pools.Add(pool); return pool;
+        }
+    }
 
     /// <summary>Creates a source consuming the provider at its source format. The source owns the provider unless leaveOpen is true.</summary>
     public virtual Source CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false)
@@ -108,9 +118,13 @@ public abstract class PlaybackDevice : Device
     /// <summary>Disposes all sources before releasing a backend device and its context.</summary>
     protected void DisposeSources()
     {
+        PlaybackPool[] pools;
+        lock (_sourceLock) { pools = _pools.ToArray(); _pools.Clear(); }
+        List<Exception>? failures = null;
+        foreach (var pool in pools)
+            try { pool.Dispose(); } catch (Exception error) { (failures ??= []).Add(error); }
         Source[] sources;
         lock (_sourceLock) sources = _sources.Keys.ToArray();
-        List<Exception>? failures = null;
         foreach (var source in sources)
             try { source.Dispose(); } catch (Exception error) { (failures ??= []).Add(error); }
         if (failures != null) throw new AggregateException("One or more sources failed to dispose.", failures);
