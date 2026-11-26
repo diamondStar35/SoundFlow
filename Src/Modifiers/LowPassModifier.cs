@@ -10,8 +10,15 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a low-pass filter.
 /// </summary>
-public class LowPassModifier : SoundModifier
+public class LowPassModifier : SoundModifier, SoundFlow.Processing.IModifierState
 {
+    /// <inheritdoc />
+    public int LatencyFrames => 0;
+    /// <summary>One second is a conservative finite bound on the filter's silence response.</summary>
+    public int TailFrames => _format.SampleRate;
+    /// <inheritdoc />
+    public void Reset() { Array.Clear(_previousOutput); }
+
     private readonly float[] _previousOutput;
     private float _cutoffFrequency;
     private readonly AudioFormat _format;

@@ -10,8 +10,16 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a delay effect.
 /// </summary>
-public sealed class DelayModifier : SoundModifier
+public sealed class DelayModifier : SoundModifier, SoundFlow.Processing.IModifierState
 {
+    /// <summary>Delay is an artistic effect, not pipeline buffering.</summary>
+    public int LatencyFrames => 0;
+    /// <summary>Finite silence-drain bound, capped at thirty seconds for feedback approaching one.</summary>
+    public int TailFrames => (int)Math.Min((long)_format.SampleRate * 30,
+        (long)_delayLines[0].Length * (Feedback <= 0 ? 1 : Math.Ceiling(Math.Log(1e-5) / Math.Log(Math.Clamp(Feedback, .0001f, .9999f)))) + 256);
+    /// <summary>Clears delayed audio and feedback-filter history on transport discontinuities.</summary>
+    public void Reset() { foreach (var line in _delayLines) Array.Clear(line); Array.Clear(_delayIndices); Array.Clear(_filterStates); }
+
     private readonly List<float[]> _delayLines;
     private readonly int[] _delayIndices;
     private readonly float[] _filterStates;

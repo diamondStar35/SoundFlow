@@ -11,7 +11,7 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// Free-verb algorithmic reverb modifier.
 /// </summary>
-public sealed class AlgorithmicReverbModifier : SoundModifier
+public sealed class AlgorithmicReverbModifier : SoundModifier, SoundFlow.Processing.IModifierState
 {
     private const int NumCombs = 8;
     private const int NumAllPasses = 4;
@@ -196,6 +196,18 @@ public sealed class AlgorithmicReverbModifier : SoundModifier
                 }
             }
         }
+    }
+
+    /// <summary>Reverberation is an artistic tail; it does not delay the dry signal for buffering.</summary>
+    public int LatencyFrames => 0;
+    /// <summary>A finite decay window, capped at thirty seconds even for a near-infinite room.</summary>
+    public int TailFrames => (int)Math.Min(_format.SampleRate * 30L, _preDelaySamples +
+        4096 * Math.Max(1, Math.Ceiling(Math.Log(0.00001) / Math.Log(Math.Clamp(_roomSize, 0.0001f, 0.9999f)))));
+    /// <summary>Discards reverberant history after a seek or reuse. Called on the control path, outside processing.</summary>
+    public void Reset()
+    {
+        _combFilters = []; _allPassFilters = []; _preDelayBuffers = []; _preDelayIndices = []; _lfoPhase = [];
+        UpdateParameters();
     }
 
     private void UpdateParameters()

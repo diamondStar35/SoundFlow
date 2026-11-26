@@ -10,8 +10,16 @@ namespace SoundFlow.Modifiers;
 /// <summary>
 /// A sound modifier that implements a chorus effect.
 /// </summary>
-public sealed class ChorusModifier : SoundModifier
+public sealed class ChorusModifier : SoundModifier, SoundFlow.Processing.IModifierState
 {
+    /// <inheritdoc />
+    public int LatencyFrames => 0;
+    /// <summary>Finite chorus feedback tail, capped at thirty seconds.</summary>
+    public int TailFrames => (int)Math.Min((long)_format.SampleRate * 30,
+        (long)_maxDelaySamples * (Feedback <= 0 ? 1 : Math.Ceiling(Math.Log(1e-5) / Math.Log(Math.Clamp(Feedback, .0001f, .9999f)))));
+    /// <inheritdoc />
+    public void Reset() { foreach (var line in _delayLines) Array.Clear(line); Array.Clear(_delayIndices); Array.Clear(_lfoPhases); }
+
     /// <summary>
     /// The depth of the chorus effect in milliseconds.
     /// </summary>
