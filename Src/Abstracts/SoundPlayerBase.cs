@@ -19,6 +19,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     private int _offset;
     private int _position;
     private int _epoch;
+    private volatile bool _changing;
     private volatile PlaybackState _state;
     /// <summary>Creates a player which owns its provider and one bounded producer session.</summary>
     protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider) : base(engine, format)
@@ -28,13 +29,29 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         catch { Transport.Dispose(); throw; }
     }
     /// <inheritdoc />
-    public float PlaybackSpeed { get => Transport.PlaybackSpeed; set => Change(() => Transport.PlaybackSpeed = value); }
+    public float PlaybackSpeed
+    {
+        get => Transport.PlaybackSpeed;
+        set
+        {
+            if (!float.IsFinite(value) || value == 0 || (value < 0 && !DataProvider.CanSeek)) throw new ArgumentOutOfRangeException(nameof(value));
+            Change(() => { Transport.PlaybackSpeed = value; if (DataProvider.CanSeek) Transport.Seek(_position); });
+        }
+    }
     /// <inheritdoc />
     public PlaybackState State { get => _state; internal set => _state = value; }
     /// <inheritdoc />
     public IDataProvider DataProvider => Transport.DataProvider;
     /// <inheritdoc />
-    public bool IsLooping { get => Transport.IsLooping; set => _session.Change(() => Transport.IsLooping = value, false); }
+    public bool IsLooping
+    {
+        get => Transport.IsLooping;
+        set
+        {
+            if (value && !DataProvider.CanSeek) throw new NotSupportedException("Looping requires seekable input.");
+            Change(() => { Transport.IsLooping = value; if (DataProvider.CanSeek) Transport.Seek(_position); });
+        }
+    }
     /// <summary>Content consumed by the software mixer, excluding queued decoding and hardware output latency.</summary>
     public float Time => (float)_position / Format.Channels / Format.SampleRate;
     /// <inheritdoc />
@@ -64,7 +81,7 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     /// <inheritdoc />
     protected override void GenerateAudio(Span<float> buffer, int channels)
     {
-        if (_state != PlaybackState.Playing || !Monitor.TryEnter(_consumeGate)) return;
+        if (_changing || _state != PlaybackState.Playing || !Monitor.TryEnter(_consumeGate)) return;
         try
         {
             var written = 0;
@@ -91,20 +108,27 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         }
         catch (Exception error)
         {
-            _state = PlaybackState.Stopped; _session.Enable(false); Enabled = false;
-            Engine.Decoding.Post(() => { if (!IsDisposed) PlaybackFailed?.Invoke(this, error); });
+            HandleProcessingFailure(error);
         }
         finally { Monitor.Exit(_consumeGate); }
     }
     /// <summary>Valid samples consumed during the latest software render call.</summary>
     public int LastConsumedSamples { get; private set; }
+    /// <inheritdoc />
+    protected override bool HandleProcessingFailure(Exception error)
+    {
+        _state = PlaybackState.Stopped; _session.Enable(false); Enabled = false;
+        Engine.Decoding.Post(() => { if (!IsDisposed) PlaybackFailed?.Invoke(this, error); });
+        return true;
+    }
     private void Change(Action action)
     {
-        _session.Enable(false);
+        ProcessingScope.ThrowIfProcessing();
+        _changing = true; _session.Enable(false);
         // Never hold the consumer gate across provider I/O; a live callback skips only this brief state update.
         lock (_consumeGate) { _epoch++; ReleaseCurrent(); }
-        _session.Change(action, true);
-        if (_state == PlaybackState.Playing) _session.Enable(true);
+        try { _session.Change(() => { action(); if (_state == PlaybackState.Playing) Transport.Play(); }, true); }
+        finally { _changing = false; if (_state == PlaybackState.Playing) _session.Enable(true); }
     }
     private void ReleaseCurrent() { if (_block != null) { _session.Release(_block); _block = null; _offset = 0; } }
     /// <inheritdoc />
@@ -148,6 +172,8 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     /// <inheritdoc />
     protected override void Dispose(bool disposing)
     {
+        if (IsDisposed) return;
+        ProcessingScope.ThrowIfProcessing();
         if (disposing)
         {
             Engine.Decoding.ValidateDisposal(); _epoch++; _state = PlaybackState.Stopped; _session.Enable(false);

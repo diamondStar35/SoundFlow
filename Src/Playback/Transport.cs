@@ -184,7 +184,7 @@ public sealed class Transport : IDisposable
         var initialChannels = format.Channels > 0 ? format.Channels : 2;
         var initialSampleRate = format.SampleRate > 0 ? format.SampleRate : 44100;
         var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
-        _resampleBuffer = new float[resampleBufferFrames * initialChannels];
+        _resampleBuffer = [];
         
 
         // Initialize with default fast config
@@ -324,7 +324,7 @@ public sealed class Transport : IDisposable
         if (_resampleBuffer.Length < minSamplesRequiredInOutputBuffer)
         {
             Array.Resize(ref _resampleBuffer,
-                Math.Max(minSamplesRequiredInOutputBuffer, _resampleBuffer.Length * 2));
+                Math.Max(minSamplesRequiredInOutputBuffer, Math.Max(8192 * channels, _resampleBuffer.Length * 2)));
         }
 
         // When playback speed is close to 1.0, use simpler interpolation.

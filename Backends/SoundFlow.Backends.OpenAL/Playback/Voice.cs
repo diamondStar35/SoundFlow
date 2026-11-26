@@ -34,6 +34,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     private readonly DecodeSession _pump = null!;
     private readonly PreparedBuffer? _prepared;
     private readonly Action<Exception>? _onFailure;
+    private readonly Action? _onBeginning;
     internal bool IsPrepared => _prepared != null;
     internal static int FormatToken(int channels) => channels switch
     {
@@ -45,15 +46,16 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     private float _gain = 1;
     private int _playedPosition;
     private bool _hasStarted;
+    private int _playbackGeneration;
     private bool _failed;
     private readonly object _disposeGate = new();
     internal bool IsGraphFeed;
     internal long Underruns;
     private readonly int _nativeFormat;
 
-    internal Voice(Context owner, IDataProvider provider, AudioFormat format, bool leaveOpen, bool spatial, Action<float[], int> publish, Action ended, PreparedBuffer? prepared = null, Action<Exception>? failed = null)
+    internal Voice(Context owner, IDataProvider provider, AudioFormat format, bool leaveOpen, bool spatial, Action<float[], int> publish, Action ended, PreparedBuffer? prepared = null, Action<Exception>? failed = null, Action? beginning = null)
     {
-        _owner = owner; Format = format; _publish = publish; _ended = ended; _prepared = prepared; _onFailure = failed;
+        _owner = owner; Format = format; _publish = publish; _ended = ended; _prepared = prepared; _onFailure = failed; _onBeginning = beginning;
         _buffers = new uint[prepared == null ? owner.Config.QueueBuffers : 0];
         _free = new Queue<uint>(_buffers.Length);
         _queued = new Queue<(uint, int, int, int, float)>(_buffers.Length);
@@ -86,6 +88,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         catch
         {
             _pump?.Dispose();
+            if (_pump == null) _transport?.Dispose();
             if (_buffers.Any(b => b != 0)) fixed (uint* pointers = _buffers) Al.alDeleteBuffers(_buffers.Length, pointers);
             if (Id != 0) { var id = Id; Al.alDeleteSources(1, &id); }
             throw;
@@ -112,8 +115,15 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         get => _transport.IsLooping;
         set
         {
+            ValidateTransportControl();
             if (IsPrepared) Control(() => { _transport.IsLooping = value; Al.alSourcei(Id, 0x1007, value ? 1 : 0); Al.CheckAl("Set prepared clip looping"); });
-            else _pump.Change(() => _transport.IsLooping = value, false);
+            else
+            {
+                if (value && !DataProvider.CanSeek) throw new NotSupportedException("Looping requires seekable input.");
+                var position = _owner.Worker.Invoke(AudiblePosition); _pump.Enable(false);
+                try { _pump.Change(() => { _transport.IsLooping = value; if (DataProvider.CanSeek) _transport.Seek(position); if (_state == PlaybackState.Playing) _transport.Play(); }, true); }
+                finally { Control(() => { if (DataProvider.CanSeek) FlushQueue(); if (_state == PlaybackState.Playing) _pump.Enable(true); }); }
+            }
         }
     }
     public float PlaybackSpeed
@@ -121,12 +131,14 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         get => _transport.PlaybackSpeed;
         set
         {
+            ValidateTransportControl();
             if (IsPrepared) { if (value != 1) throw new NotSupportedException("Prepared clips support native pitch, not software transport speed changes."); return; }
             if (!float.IsFinite(value) || value == 0) throw new ArgumentOutOfRangeException(nameof(value));
             if (value < 0 && !DataProvider.CanSeek) throw new NotSupportedException("Reverse playback requires a seekable provider.");
             var position = _owner.Worker.Invoke(AudiblePosition);
-            _pump.Change(() => { _transport.PlaybackSpeed = value; if (DataProvider.CanSeek) _transport.Seek(position); }, DataProvider.CanSeek);
-            if (DataProvider.CanSeek) Control(FlushQueue);
+            _pump.Enable(false);
+            _pump.Change(() => { _transport.PlaybackSpeed = value; if (DataProvider.CanSeek) _transport.Seek(position); if (_state == PlaybackState.Playing) _transport.Play(); }, DataProvider.CanSeek);
+            Control(() => { if (DataProvider.CanSeek) FlushQueue(); if (_state == PlaybackState.Playing) _pump.Enable(true); });
         }
     }
     public float Volume
@@ -144,77 +156,84 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     public float Duration => _transport.Duration;
     public int LoopStartSamples => _transport.LoopStartSamples;
     public int LoopEndSamples => _transport.LoopEndSamples;
-    public void Play() => Control(() =>
+    private void ValidateTransportControl()
     {
+        Devices.ProcessingScope.ThrowIfProcessing(); _owner.EnsureOutsideBatch();
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+    }
+    public void Play()
+    {
+        ValidateTransportControl();
         if (_failed) throw new InvalidOperationException("This voice failed and must be recreated. See backend notifications or diagnostics.");
-        if (IsPrepared)
-        {
-            if (_state == PlaybackState.Playing) return;
-            _state = PlaybackState.Playing;
-            if (!_preparing && _owner.CanStartPlayback) ResumeNative();
-            return;
-        }
-        _pump.ThrowIfFailed();
         if (_state == PlaybackState.Playing) return;
-        var restarting = _pump.Done;
-        _pump.Change(() =>
+        _onBeginning?.Invoke(); _playbackGeneration++;
+        if (!IsPrepared)
         {
-            if (restarting)
+            _pump.ThrowIfFailed();
+            var restarting = _pump.Done;
+            _pump.Change(() =>
             {
-                if (!DataProvider.CanSeek) throw new NotSupportedException("An exhausted nonseekable source cannot restart.");
-                _transport.Seek(_transport.PlaybackSpeed < 0 && DataProvider.Length > 0 ? DataProvider.Length : 0);
-                _playedPosition = _transport.SamplePosition;
-            }
-            _transport.Play();
-        }, restarting);
-        _state = PlaybackState.Playing;
-        _pump.Enable(true);
-        if (!_preparing) ResumeNative();
-    });
-    public void Pause() => Control(() =>
-    {
-        if (_state != PlaybackState.Playing) return;
-        PauseNative(); _state = PlaybackState.Paused; if (IsPrepared) return; _pump.Enable(false);
-        _pump.Change(_transport.Pause, false);
-    });
-    public void Stop() => Control(() =>
-    {
-        ScheduledAt = null;
-        if (IsPrepared) { Al.alSourceStop(Id); Al.alSourcei(Id, 0x1025, 0); Al.CheckAl("Stop prepared source"); _playedPosition = 0; _state = PlaybackState.Stopped; _hasStarted = false; return; }
-        _pump.Enable(false);
-        _pump.Change(_transport.Stop, true);
-        FlushQueue(); _playedPosition = DataProvider.CanSeek ? 0 : _transport.SamplePosition; _state = PlaybackState.Stopped;
-    });
-    public bool Seek(int sampleOffset)
-    {
-        var result = false;
+                if (restarting)
+                {
+                    if (!DataProvider.CanSeek) throw new NotSupportedException("An exhausted nonseekable source cannot restart.");
+                    _transport.Seek(_transport.PlaybackSpeed < 0 && DataProvider.Length > 0 ? DataProvider.Length : 0);
+                }
+                _transport.Play();
+            }, restarting);
+        }
         Control(() =>
         {
-            if (IsPrepared)
-            {
-                if (sampleOffset < 0 || sampleOffset >= DataProvider.Length) return;
-                sampleOffset -= sampleOffset % Format.Channels;
-                Al.alSourcei(Id, 0x1025, sampleOffset / Format.Channels); Al.CheckAl("Seek prepared source");
-                _playedPosition = sampleOffset; result = true; return;
-            }
-            if (!DataProvider.CanSeek) return;
-            _pump.Change(() => { result = _transport.Seek(sampleOffset); if (_state == PlaybackState.Playing) _transport.Play(); }, true);
-            if (result) { FlushQueue(); _playedPosition = _transport.SamplePosition; }
+            _state = PlaybackState.Playing; _pump?.Enable(true);
+            if (!_preparing && _owner.CanStartPlayback) ResumeNative();
         });
+    }
+    public void Pause()
+    {
+        ValidateTransportControl();
+        Control(() => { if (_state != PlaybackState.Playing) return; PauseNative(); _state = PlaybackState.Paused; _pump?.Enable(false); });
+    }
+    public void Stop()
+    {
+        ValidateTransportControl();
+        Control(() =>
+        {
+            _playbackGeneration++; _preparing = false; ScheduledAt = null; _pump?.Enable(false); FlushQueue();
+            _playedPosition = DataProvider.CanSeek ? 0 : _playedPosition; _state = PlaybackState.Stopped; _hasStarted = false;
+            if (IsPrepared) { Al.alSourcei(Id, 0x1025, 0); Al.CheckAl("Rewind prepared source"); }
+        });
+        // Serialized provider seeking may wait, but the context worker is already free and audible playback has stopped.
+        if (!IsPrepared) _pump.Change(_transport.Stop, true);
+    }
+    public bool Seek(int sampleOffset)
+    {
+        ValidateTransportControl();
+        if (IsPrepared)
+        {
+            if (sampleOffset < 0 || sampleOffset >= DataProvider.Length) return false;
+            Control(() => { sampleOffset -= sampleOffset % Format.Channels; Al.alSourcei(Id, 0x1025, sampleOffset / Format.Channels); Al.CheckAl("Seek prepared source"); _playedPosition = sampleOffset; });
+            return true;
+        }
+        if (!DataProvider.CanSeek) return false;
+        _pump.Enable(false);
+        var result = false;
+        _pump.Change(() => { result = _transport.Seek(sampleOffset); if (_state == PlaybackState.Playing) _transport.Play(); }, true);
+        Control(() => { if (result) { FlushQueue(); _playedPosition = _transport.SamplePosition; } if (_state == PlaybackState.Playing) _pump.Enable(true); });
         return result;
     }
-    public void SetLoopPoints(int startSample, int endSample = -1) => Control(() =>
+    public void SetLoopPoints(int startSample, int endSample = -1)
     {
+        ValidateTransportControl();
         if (IsPrepared)
         {
             if (startSample != 0 || (endSample != -1 && endSample != DataProvider.Length))
                 throw new NotSupportedException("Prepared sources share a native buffer and support only whole-clip loops. Use an ordinary source for authored loop ranges.");
             return;
         }
-        var position = AudiblePosition();
-        _pump.Change(() => { _transport.SetLoopPoints(startSample, endSample); if (DataProvider.CanSeek) _transport.Seek(position); }, DataProvider.CanSeek);
-        if (DataProvider.CanSeek) FlushQueue();
-    });
+        var position = _owner.Worker.Invoke(AudiblePosition);
+        _pump.Enable(false);
+        _pump.Change(() => { _transport.SetLoopPoints(startSample, endSample); if (DataProvider.CanSeek) _transport.Seek(position); if (_state == PlaybackState.Playing) _transport.Play(); }, DataProvider.CanSeek);
+        Control(() => { if (DataProvider.CanSeek) FlushQueue(); if (_state == PlaybackState.Playing) _pump.Enable(true); });
+    }
     public void AddModifier(SoundModifier modifier)
     {
         if (IsPrepared) throw new NotSupportedException("Prepared clips bypass software modifiers. Create an ordinary clip source instead.");
@@ -225,6 +244,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
 
     internal void ResumeNative()
     {
+        if (_preparing) return;
         if (IsPrepared)
         {
             if (_state == PlaybackState.Playing && (!ScheduledAt.HasValue) && Al.SourceInteger(Id, 0x1010) != 0x1012)
@@ -240,6 +260,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     internal void FillQueue(bool wait, bool running)
     {
         if (IsDisposed || _failed) return;
+        running &= !_preparing;
         if (IsPrepared) { FillPrepared(running); return; }
         var processed = Al.SourceInteger(Id, 0x1016);
         while (processed-- > 0)
@@ -271,9 +292,15 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         }
         if (_pump.Done && _queued.Count == 0 && _pump.ReadyCount == 0)
         {
-            _state = PlaybackState.Stopped; _pump.Enable(false); _owner.PostCompletion(() => { if (!IsDisposed) _ended(); });
+            _state = PlaybackState.Stopped; _pump.Enable(false); PostNaturalCompletion();
         }
     }
+    private void PostNaturalCompletion()
+    {
+        var generation = _playbackGeneration;
+        _owner.PostCompletion(() => { if (!IsDisposed && generation == _playbackGeneration) _ended(); });
+    }
+
     private void FillPrepared(bool running)
     {
         if (_state != PlaybackState.Playing) return;
@@ -286,7 +313,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         else if (state == 0x1014)
         {
             _playedPosition = DataProvider.Length; _state = PlaybackState.Stopped;
-            _owner.PostCompletion(() => { if (!IsDisposed) _ended(); });
+            PostNaturalCompletion();
         }
     }
 
@@ -338,24 +365,31 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         lock (_disposeGate)
         {
             if (IsDisposed) return;
+            List<Exception>? errors = null;
+            void Attempt(Action action) { try { action(); } catch (Exception error) { (errors ??= []).Add(error); } }
             try
             {
-                _owner.Worker.Invoke(() =>
+                Attempt(() => _pump?.Dispose());
+                Attempt(() => _owner.Worker.Invoke(() =>
                 {
-                    FlushQueue();
-                    DisposeFilters();
-                    if (_prepared != null)
+                    Attempt(FlushQueue); Attempt(DisposeFilters);
+                    try
                     {
-                        Al.alSourcei(Id, 0x1009, 0); Al.alSourcei(Id, 0x1007, 0);
-                        _owner.ReturnPreparedSource(Id); _owner.ReleaseClip(_prepared);
+                        if (_prepared != null)
+                        {
+                            Al.alSourcei(Id, 0x1009, 0); Al.alSourcei(Id, 0x1007, 0); Al.CheckAl("Detach prepared source");
+                            if (errors == null) _owner.ReturnPreparedSource(Id);
+                            else { var id = Id; Al.alDeleteSources(1, &id); }
+                        }
+                        else { var id = Id; Al.alDeleteSources(1, &id); }
+                        if (_buffers.Length > 0) fixed (uint* buffers = _buffers) Al.alDeleteBuffers(_buffers.Length, buffers);
+                        Al.CheckAl("Release source");
                     }
-                    else { var id = Id; Al.alDeleteSources(1, &id); }
-                    fixed (uint* buffers = _buffers) Al.alDeleteBuffers(_buffers.Length, buffers);
-                    Al.CheckAl("Release source");
-                    _owner.Sources.Remove(this);
-                });
+                    finally { if (_prepared != null) _owner.ReleaseClip(_prepared); _owner.Sources.Remove(this); }
+                }));
             }
-            finally { IsDisposed = true; if (_pump != null) _pump.Dispose(); else _transport.Dispose(); }
+            finally { IsDisposed = true; if (_pump == null) Attempt(_transport.Dispose); }
+            if (errors != null) throw new AggregateException("Source cleanup encountered errors.", errors);
         }
     }
 }

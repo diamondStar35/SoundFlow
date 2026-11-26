@@ -563,6 +563,9 @@ public abstract class Engine : FeatureHost, IDisposable
         Dispose(false);
     }
 
+    /// <summary>Checks playback threading before a backend begins changing its disposal state.</summary>
+    protected void ValidatePlaybackDisposal() { Playback.ProcessingScope.ThrowIfProcessing(); _decoding?.ValidateDisposal(); }
+
     /// <summary>
     /// Disposes of managed and unmanaged resources.
     /// </summary>
@@ -572,6 +575,7 @@ public abstract class Engine : FeatureHost, IDisposable
         if (IsDisposed)
             return;
 
+        if (disposing) Playback.ProcessingScope.ThrowIfProcessing();
         if (disposing) { _decoding?.ValidateDisposal(); _decoding?.CancelAll(); }
 
         try

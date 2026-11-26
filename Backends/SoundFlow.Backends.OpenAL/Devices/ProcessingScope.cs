@@ -7,6 +7,7 @@ internal readonly struct ProcessingScope : IDisposable
     internal static ProcessingScope Enter() { _depth++; return new ProcessingScope(); }
     internal static void ThrowIfProcessing()
     {
+        SoundFlow.Playback.ProcessingScope.ThrowIfProcessing();
         if (_depth != 0) throw new InvalidOperationException("Native controls cannot run inside a PCM processing callback. Queue the control on your application thread.");
     }
     public void Dispose() => _depth--;

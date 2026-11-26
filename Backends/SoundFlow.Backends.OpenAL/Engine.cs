@@ -78,6 +78,7 @@ public sealed unsafe class Engine : CoreEngine, IOfflineRendering, INotification
     {
         if (!disposing) { base.Dispose(false); return; }
         ProcessingScope.ThrowIfProcessing();
+        ValidatePlaybackDisposal();
         lock (_devicesLock)
         {
             if (_disposing || IsDisposed) return;

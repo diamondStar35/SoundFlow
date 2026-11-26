@@ -40,7 +40,7 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
     internal bool HasEfx;
     internal bool HasHrtf;
     internal bool SlotChaining;
-    private bool _disposed;
+    private volatile bool _disposed;
     private bool _running;
     internal bool CanStartPlayback => Offline || _running;
     private string _version = "";

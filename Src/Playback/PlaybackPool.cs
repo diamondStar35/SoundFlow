@@ -39,7 +39,7 @@ public sealed class PlaybackPool : IDisposable
 {
     private readonly object _gate = new();
     private readonly List<PlaybackLease> _active = [];
-    private readonly PlaybackDevice _device;
+    private PlaybackDevice _device;
     private readonly int _capacity;
     private bool _disposed;
     private long _played;
@@ -50,6 +50,8 @@ public sealed class PlaybackPool : IDisposable
         if (options.Capacity is < 1 or > 4096) throw new ArgumentOutOfRangeException(nameof(options.Capacity));
         _device = device; _capacity = options.Capacity;
     }
+    /// <summary>Moves a stopped software pool together with all its sources during a validated device transfer.</summary>
+    internal void RebindDevice(PlaybackDevice target) => Volatile.Write(ref _device, target);
     /// <summary>Returns an atomic copy of occupancy and lifetime admission totals.</summary>
     public PlaybackPoolSnapshot GetSnapshot() { lock (_gate) return new(_capacity, _active.Count, _played, _stolen, _rejected); }
 
@@ -134,6 +136,7 @@ public sealed class PlaybackPool : IDisposable
             List<Exception>? errors = null;
             foreach (var lease in _active.ToArray())
                 try { Finish(lease, PlaybackEndReason.PoolDisposed); } catch (Exception error) { (errors ??= []).Add(error); }
+            _device.ReleasePool(this);
             if (errors != null) throw new AggregateException(errors);
         }
     }

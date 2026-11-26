@@ -53,23 +53,29 @@ internal sealed unsafe partial class Context : IPlaybackTiming, ISourceGroups, I
         });
     }
 
-    public void PlayAt(CoreSource source, long nanoseconds) => Worker.Invoke(() =>
+    public void PlayAt(CoreSource source, long nanoseconds)
     {
-        ValidateTimestamp(nanoseconds);
-        var voice = GetVoice(source);
-        if (voice.State == Enums.PlaybackState.Playing) throw new InvalidOperationException("Pause or stop the source before scheduling it.");
+        var voice = Worker.Invoke(() =>
+        {
+            ValidateTimestamp(nanoseconds);
+            var member = GetVoice(source);
+            if (member.State == Enums.PlaybackState.Playing) throw new InvalidOperationException("Pause or stop the source before scheduling it.");
+            return member;
+        });
         voice.PrepareStart();
-        Al.alSourcePlayAtTimeSOFT(voice.Id, nanoseconds);
-        Al.CheckAl("Schedule source playback");
-        voice.ScheduledAt = nanoseconds;
-    });
-
-    public void PlayAt(SourceGroup group, long nanoseconds) => Worker.Invoke(() =>
+        Worker.Invoke(() =>
+        {
+            GetVoice(source);
+            Al.alSourcePlayAtTimeSOFT(voice.Id, nanoseconds); Al.CheckAl("Schedule source playback");
+            voice.CompleteStart(nanoseconds);
+        });
+    }
+    public void PlayAt(SourceGroup group, long nanoseconds)
     {
-        ValidateTimestamp(nanoseconds);
+        Worker.Invoke(() => ValidateTimestamp(nanoseconds));
         if (group is not Group native || native.Context != this) throw new ArgumentException("The group must belong to this context.", nameof(group));
         native.Start(nanoseconds);
-    });
+    }
 
     private void ValidateTimestamp(long nanoseconds)
     {

@@ -406,6 +406,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
     public void Process(Span<float> outputBuffer, int channels)
     {
         if (!Enabled || Mute || IsDisposed) return;
+        using var processing = SoundFlow.Playback.ProcessingScope.Enter();
 
         float[]? rentedBuffer = null;
         try
@@ -442,6 +443,7 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
             foreach (var analyzer in currentAnalyzers)
                 analyzer.Process(workingBuffer, channels);
         }
+        catch (Exception error) when (HandleProcessingFailure(error)) { }
         finally
         {
             if (rentedBuffer != null)
@@ -455,6 +457,9 @@ public abstract class SoundComponent : IDisposable, IMidiMappable
         foreach (var input in _inputsSnapshot)
             if (input.Enabled && !input.Mute) input.PrepareForRender();
     }
+
+    /// <summary>Lets a player isolate a terminal processing failure. Returning false preserves ordinary exception propagation for other graph types.</summary>
+    protected virtual bool HandleProcessingFailure(Exception error) => false;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void MixBuffers(ReadOnlySpan<float> source, Span<float> destination)

@@ -32,6 +32,7 @@ public abstract class PlaybackDevice : Device
             var pool = new PlaybackPool(this, options ?? new()); _pools.Add(pool); return pool;
         }
     }
+    internal void ReleasePool(PlaybackPool pool) { lock (_sourceLock) _pools.Remove(pool); }
 
     /// <summary>Creates a source consuming the provider at its source format. The source owns the provider unless leaveOpen is true.</summary>
     public virtual Source CreateSource(IDataProvider provider, AudioFormat format, bool leaveOpen = false)
@@ -112,6 +113,8 @@ public abstract class PlaybackDevice : Device
                 target._sources.Add(source, provider);
             }
             _sources.Clear();
+            foreach (var pool in _pools) { pool.RebindDevice(target); target._pools.Add(pool); }
+            _pools.Clear();
         }
     }
 

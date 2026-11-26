@@ -86,17 +86,21 @@ public sealed class DecodeSession : IDisposable
     /// <summary>Discards decode-ahead before serializing a control operation with the transport.</summary>
     public void Change(Action action, bool invalidate)
     {
+        ProcessingScope.ThrowIfProcessing();
         ThrowIfFailed();
-        lock (_gate)
+        lock (_transportGate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (invalidate)
+            action();
+            lock (_gate)
             {
-                _generation++; _done = false; _starved = false;
-                while (_ready.TryDequeue(out var block)) _free.Enqueue(block);
+                if (invalidate)
+                {
+                    _generation++; _done = false; _starved = false;
+                    while (_ready.TryDequeue(out var block)) _free.Enqueue(block);
+                }
             }
         }
-        lock (_transportGate) { ObjectDisposedException.ThrowIf(_disposed, this); action(); }
         Request();
     }
     /// <summary>Consumes a ready block. Offline callers may wait; live callers receive false immediately on starvation.</summary>
@@ -121,6 +125,7 @@ public sealed class DecodeSession : IDisposable
     /// <summary>Waits for producer readiness without consuming audio. Intended for offline graph preparation.</summary>
     public void Prepare()
     {
+        ProcessingScope.ThrowIfProcessing();
         Request();
         lock (_gate)
         {
@@ -150,6 +155,7 @@ public sealed class DecodeSession : IDisposable
         {
             lock (_transportGate)
             {
+                lock (_gate) if (_disposed || generation != _generation) return;
                 _cancel.Token.ThrowIfCancellationRequested();
                 _prepare?.Invoke();
                 block.Speed = _transport.PlaybackSpeed; block.StartPosition = _transport.SamplePosition;
@@ -186,10 +192,16 @@ public sealed class DecodeSession : IDisposable
         if (produced) Request();
     }
     /// <summary>Requests terminal cancellation. A canceled session cannot restart.</summary>
-    public void Cancel() { _cancel.Cancel(); lock (_gate) Monitor.PulseAll(_gate); }
+    public void Cancel()
+    {
+        try { _cancel.Cancel(); }
+        catch (Exception error) { lock (_gate) { _failure = ExceptionDispatchInfo.Capture(error); _done = true; } }
+        finally { lock (_gate) Monitor.PulseAll(_gate); }
+    }
     /// <summary>Cancels and drains the producer before disposing its transport and input.</summary>
     public void Dispose()
     {
+        ProcessingScope.ThrowIfProcessing();
         _scheduler.ValidateDisposal();
         lock (_gate) { if (_disposed) return; _disposed = true; _enabled = false; _generation++; Monitor.PulseAll(_gate); }
         Cancel();

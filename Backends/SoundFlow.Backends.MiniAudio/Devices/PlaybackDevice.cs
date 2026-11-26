@@ -41,6 +41,8 @@ internal sealed class PlaybackDevice : CorePlaybackDevice
 
     public override void Dispose()
     {
+        SoundFlow.Playback.ProcessingScope.ThrowIfProcessing();
+        Engine.Decoding.ValidateDisposal();
         if (IsDisposed) return;
         IsDisposed = true;
         // Uninitialization waits for the native callback before managed graph/provider resources can be released.

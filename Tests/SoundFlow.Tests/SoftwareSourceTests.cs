@@ -37,6 +37,20 @@ public sealed class SoftwareSourceTests
         Assert.Equal(new[] { .1f, .1f, .2f, .2f, .3f, .3f, .4f, .4f }, output);
     }
 
+    [Fact]
+    public void TransferringSoftwareSourcesAlsoTransfersTheirOwningPlaybackPool()
+    {
+        using var engine = new HeadlessEngine();
+        var old = new SoftwareDevice(engine);
+        using var next = new SoftwareDevice(engine);
+        using var pool = old.CreatePool();
+        using var lease = pool.Play(PreparedClipTests.Tone());
+        old.TransferSourcesTo(next); old.Dispose();
+        Assert.Null(lease.Outcome); Assert.Same(next, lease.Source.Device);
+        using var following = pool.Play(PreparedClipTests.Tone());
+        Assert.Same(next, following.Source.Device);
+    }
+
     private sealed class Config : DeviceConfiguration;
     private sealed class SoftwareDevice(Engine engine) : PlaybackDevice(engine, OpenAlPlaybackTests.Stereo, new Config())
     {

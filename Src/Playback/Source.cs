@@ -121,6 +121,9 @@ public abstract class Source : FeatureHost, IPlayer
     /// <summary>Releases backend resources and always relinquishes the provider lease, including when cleanup fails.</summary>
     public void Dispose()
     {
+        if (IsDisposed) return;
+        ProcessingScope.ThrowIfProcessing();
+        Device.Engine.Decoding.ValidateDisposal();
         ValidateDisposal();
         lock (_disposeGate)
         {

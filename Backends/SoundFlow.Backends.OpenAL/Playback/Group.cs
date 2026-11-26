@@ -31,29 +31,32 @@ internal sealed unsafe class Group : SourceGroup
         return _sources.Select(Context.GetVoice).ToArray();
     }
 
-    public override void Play() => Context.Worker.Invoke(() => Start(null));
+    public override void Play() => Start(null);
 
     internal void Start(long? timestamp)
     {
-        Context.RequireRunningForNativePlayback();
-        var voices = Validate();
+        var voices = Context.Worker.Invoke(() => { Context.RequireRunningForNativePlayback(); return Validate(); });
         if (!timestamp.HasValue && voices.All(voice => voice.State == PlaybackState.Playing)) return;
         if (voices.Any(voice => voice.State == PlaybackState.Playing)) throw new InvalidOperationException("Pause or stop all members before synchronized playback.");
         // Decode-ahead may advance input cursors, but no member starts before every input is prepared.
         try
         {
             foreach (var voice in voices) voice.PrepareStart();
-            fixed (uint* ids = _ids)
+            Context.Worker.Invoke(() =>
             {
-                if (timestamp.HasValue) Context.Al.alSourcePlayAtTimevSOFT(_ids.Length, ids, timestamp.Value);
-                else Context.Al.alSourcePlayv(_ids.Length, ids);
-            }
-            Context.Al.CheckAl("Start source group");
-            foreach (var voice in voices) voice.ScheduledAt = timestamp;
+                Validate();
+                fixed (uint* ids = _ids)
+                {
+                    if (timestamp.HasValue) Context.Al.alSourcePlayAtTimevSOFT(_ids.Length, ids, timestamp.Value);
+                    else Context.Al.alSourcePlayv(_ids.Length, ids);
+                }
+                Context.Al.CheckAl("Start source group");
+                foreach (var voice in voices) voice.CompleteStart(timestamp);
+            });
         }
         catch
         {
-            foreach (var voice in voices) { voice.PauseNative(); voice.PauseAfterNativeCommand(); }
+            Context.Worker.Invoke(() => { foreach (var voice in voices) { voice.PauseNative(); voice.PauseAfterNativeCommand(); } });
             throw;
         }
     }
@@ -66,20 +69,22 @@ internal sealed unsafe class Group : SourceGroup
         foreach (var voice in voices) voice.PauseAfterNativeCommand();
     });
 
-    public override void Stop() => Context.Worker.Invoke(() =>
+    public override void Stop()
     {
-        var voices = Validate();
-        fixed (uint* ids = _ids) Context.Al.alSourceStopv(_ids.Length, ids);
-        Context.Al.CheckAl("Stop source group");
-        foreach (var voice in voices) voice.Stop();
-    });
-
-    public override void Rewind() => Context.Worker.Invoke(() =>
+        var voices = Context.Worker.Invoke(() =>
+        {
+            var members = Validate();
+            fixed (uint* ids = _ids) Context.Al.alSourceStopv(_ids.Length, ids);
+            Context.Al.CheckAl("Stop source group"); return members;
+        });
+        foreach (var source in _sources) source.Stop();
+    }
+    public override void Rewind()
     {
-        var voices = Validate();
+        var voices = Context.Worker.Invoke(Validate);
         if (voices.Any(voice => !voice.DataProvider.CanSeek)) throw new NotSupportedException("Rewinding requires seekable members.");
         Stop();
-    });
+    }
 
     public override void Dispose() => _disposed = true;
 }

@@ -14,6 +14,7 @@ public sealed class DecodeScheduler : IDisposable
     private readonly Timer _retry;
     private readonly PlaybackDispatcher _notifications = new();
     private bool _stopping;
+    private bool _accepting = true;
     private DecodeSession[] _snapshot = [];
     private long _retiredStarvations;
     private long _retiredFailures;
@@ -34,12 +35,18 @@ public sealed class DecodeScheduler : IDisposable
 
     internal void Register(DecodeSession session)
     {
-        lock (_gate) { ObjectDisposedException.ThrowIf(_stopping, this); _sessions.Add(session); Volatile.Write(ref _snapshot, _sessions.ToArray()); }
+        lock (_gate) { ObjectDisposedException.ThrowIf(_stopping || !_accepting, this); _sessions.Add(session); Volatile.Write(ref _snapshot, _sessions.ToArray()); }
     }
     internal void Remove(DecodeSession session)
     {
         lock (_gate) if (_sessions.Remove(session))
         {
+            static void Prune(Queue<DecodeSession> queue, DecodeSession removed)
+            {
+                var count = queue.Count;
+                while (count-- > 0) { var item = queue.Dequeue(); if (!ReferenceEquals(item, removed)) queue.Enqueue(item); }
+            }
+            Prune(_urgent, session); Prune(_normal, session);
             _retiredStarvations += session.Starvations; _retiredFailures += session.Failures;
             Volatile.Write(ref _snapshot, _sessions.ToArray());
         }
@@ -94,14 +101,14 @@ public sealed class DecodeScheduler : IDisposable
             sessions.Sum(s => s.BufferedFrames), _retiredStarvations + sessions.Sum(s => s.Starvations), _retiredFailures + sessions.Sum(s => s.Failures));
     }
 
-    /// <summary>Cancels every session before waiting for any one of them. Does not free native resources.</summary>
+    /// <summary>Stops new session registration and cancels every session before waiting for any one of them. Does not free native resources.</summary>
     public void CancelAll()
     {
         DecodeSession[] sessions;
-        lock (_gate) sessions = _sessions.ToArray();
+        lock (_gate) { _accepting = false; sessions = _sessions.ToArray(); }
         foreach (var session in sessions) session.Cancel();
     }
-    /// <summary>Rejects lifecycle operations from a decoding or notification callback before any state changes.</summary>
+    /// <summary>Rejects lifecycle operations from a decoding callback before any state changes.</summary>
     public void ValidateDisposal()
     {
         if (_current == this)

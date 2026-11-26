@@ -110,40 +110,20 @@ internal sealed unsafe class Decoder : ICancellableDecoder
             var buffer = GetBufferIfNeeded(samples.Length);
             var span = buffer ?? MemoryMarshal.AsBytes(samples);
 
-            fixed (byte* nativeBuffer = span)
+            try
             {
-                var result = Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out var framesRead);
-
-                _input.ThrowIfFailed();
-                // If we reached the end of the stream, set the flag and return 0
-                if (result == Result.AtEnd)
+                fixed (byte* nativeBuffer = span)
                 {
-                    _endOfStreamReached = true;
+                    var result = Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out var framesRead);
+                    _input.ThrowIfFailed();
+                    if (result == Result.AtEnd) _endOfStreamReached = true;
+                    else if (result != Result.Success) throw new BackendException("MiniAudio", result, "Failed to decode PCM frames.");
+                    if (framesRead == 0 && _endOfStreamReached) EndOfStreamReached?.Invoke(this, EventArgs.Empty);
+                    if (SampleFormat is not SampleFormat.F32 && framesRead > 0) ConvertToFloat(samples, framesRead, span);
+                    return checked((int)framesRead * Channels);
                 }
-                // Check for actual errors, ignoring the clean AtEnd result.
-                else if (result != Result.Success)
-                {
-                    _endOfStreamReached = true;
-                    return 0;
-                }
-
-                if (framesRead == 0 && _endOfStreamReached)
-                {
-                    EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-                }
-
-                if (framesRead == 0)
-                {
-                    // If we got here, it means no frames were read, and it wasn't an error, so we're done.
-                    if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
-                    return 0;
-                }
-
-                if (SampleFormat is not SampleFormat.F32) ConvertToFloat(samples, framesRead, span);
-                if (buffer is not null) ArrayPool<byte>.Shared.Return(buffer);
-
-                return (int)framesRead * Channels;
             }
+            finally { if (buffer != null) ArrayPool<byte>.Shared.Return(buffer); }
         }
     }
 

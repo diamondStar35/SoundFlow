@@ -23,7 +23,7 @@ internal sealed class SpatialSource : CoreSpatialSource, INativeSource
         try
         {
             Voice = new Voice(context, provider, format, leaveOpen, true,
-                (samples, count) => PublishBuffer(samples.AsSpan(0, count)), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error));
+                (samples, count) => PublishBuffer(samples.AsSpan(0, count)), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error), BeginPlayback);
             context.Sources.Add(Voice);
             RegisterFeature<ISourcePitch>(Voice);
             RegisterFeature<ISourceRendering>(Voice);
@@ -42,7 +42,7 @@ internal sealed class SpatialSource : CoreSpatialSource, INativeSource
     public override float Duration => Voice.Duration;
     public override int LoopStartSamples => Voice.LoopStartSamples;
     public override int LoopEndSamples => Voice.LoopEndSamples;
-    public override void Play() { BeginPlayback(); Voice.Play(); }
+    public override void Play() => Voice.Play();
     public override void Pause() => Voice.Pause();
     public override void Stop() { Voice.Stop(); RaisePlaybackTerminated(PlaybackEndReason.Stopped); }
     public override bool Seek(int offset) => Voice.Seek(offset);
