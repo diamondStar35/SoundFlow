@@ -28,6 +28,7 @@ internal sealed class SoftwareSource : Source
             _tap = new BufferTap(this);
             _player.AddModifier(_tap);
             _player.PlaybackEnded += (_, _) => RaisePlaybackEnded();
+            _player.PlaybackFailed += (_, error) => RaisePlaybackTerminated(PlaybackEndReason.Failed, error);
             device.MasterMixer.AddComponent(_player);
         }
         catch { ReleaseProviderOwnership(); throw; }
@@ -41,9 +42,9 @@ internal sealed class SoftwareSource : Source
     public override float Duration => _player.Duration;
     public override int LoopStartSamples => ToInput(_player.LoopStartSamples);
     public override int LoopEndSamples => _player.LoopEndSamples < 0 ? -1 : ToInput(_player.LoopEndSamples);
-    public override void Play() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Play(); }
+    public override void Play() { ObjectDisposedException.ThrowIf(IsDisposed, this); BeginPlayback(); _player.Play(); }
     public override void Pause() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Pause(); }
-    public override void Stop() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Stop(); }
+    public override void Stop() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Stop(); RaisePlaybackTerminated(PlaybackEndReason.Stopped); }
     public override bool Seek(int sampleOffset) => _player.Seek(ToOutput(sampleOffset));
     public override void SetLoopPoints(int startSample, int endSample = -1) => _player.SetLoopPoints(ToOutput(startSample), endSample < 0 ? -1 : ToOutput(endSample));
     public override void AddModifier(SoundModifier modifier)

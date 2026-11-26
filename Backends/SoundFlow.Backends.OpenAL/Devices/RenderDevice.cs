@@ -28,6 +28,7 @@ internal sealed class RenderDevice : CoreRenderDevice
         Capability = Capability.Playback;
         _context = new Context(engine, this, null, config, true, graphTap: (data, count) => PublishBuffer(data.AsSpan(0, count), ProcessingStage.GraphOutput));
         RegisterFeature<IScene>(_context);
+        RegisterFeature<IPreparedClips>(_context);
         RegisterFeature<IDiagnostics>(_context);
         RegisterFeature<Features.IDeviceRendering>(_context);
         RegisterFeature<INotifications>(_context);

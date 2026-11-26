@@ -42,6 +42,7 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
     internal bool SlotChaining;
     private bool _disposed;
     private bool _running;
+    internal bool CanStartPlayback => Offline || _running;
     private string _version = "";
     private string[] _extensions = [];
     private string _deviceName = "";
@@ -170,7 +171,7 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
             {
                 var source = Sources[i];
                 try { source.FillQueue(wait, Offline || _running); }
-                catch (Exception error) { source.Fail(); ProcessingFailed(error); }
+                catch (Exception error) { source.Fail(error); ProcessingFailed(error); }
             }
     }
 
@@ -226,11 +227,14 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         LastFailure = _lastFailure, DroppedNotifications = DroppedNotifications
     });
 
+    internal void Label(int kind, uint id, string label) { }
+
     private void Cleanup()
     {
         if (_context != 0)
         {
             RemoveNotifications();
+            DisposePreparedBuffers();
             if (Al.alcSetThreadContext != null) Al.alcSetThreadContext(0);
             _lifecycle.DestroyContext(_context);
             _context = 0;

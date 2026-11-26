@@ -1,3 +1,4 @@
+using SoundFlow.Playback;
 using SoundFlow.Providers;
 using Context = SoundFlow.Backends.OpenAL.Devices.Context;
 using CoreSource = SoundFlow.Playback.Source;
@@ -15,13 +16,13 @@ namespace SoundFlow.Backends.OpenAL.Playback;
 internal sealed class Source : CoreSource, INativeSource
 {
     public Voice Voice { get; }
-    internal Source(Context context, IDataProvider provider, AudioFormat format, bool leaveOpen)
+    internal Source(Context context, IDataProvider provider, AudioFormat format, bool leaveOpen, Devices.PreparedBuffer? prepared = null)
         : base(context.Owner, provider, format)
     {
         try
         {
             Voice = new Voice(context, provider, format, leaveOpen, false,
-                (samples, count) => PublishBuffer(samples.AsSpan(0, count)), RaisePlaybackEnded);
+                (samples, count) => PublishBuffer(samples.AsSpan(0, count)), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error));
             context.Sources.Add(Voice);
             RegisterFeature<ISourcePitch>(Voice);
             RegisterFeature<ISourceRendering>(Voice);
@@ -29,6 +30,7 @@ internal sealed class Source : CoreSource, INativeSource
         }
         catch { ReleaseProviderOwnership(); throw; }
     }
+    public override bool SupportsSoftwareProcessing => !Voice.IsPrepared;
     public override PlaybackState State => Voice.State;
     public override IDataProvider DataProvider => Voice.DataProvider;
     public override bool IsLooping { get => Voice.IsLooping; set => Voice.IsLooping = value; }
@@ -38,9 +40,9 @@ internal sealed class Source : CoreSource, INativeSource
     public override float Duration => Voice.Duration;
     public override int LoopStartSamples => Voice.LoopStartSamples;
     public override int LoopEndSamples => Voice.LoopEndSamples;
-    public override void Play() => Voice.Play();
+    public override void Play() { BeginPlayback(); Voice.Play(); }
     public override void Pause() => Voice.Pause();
-    public override void Stop() => Voice.Stop();
+    public override void Stop() { Voice.Stop(); RaisePlaybackTerminated(PlaybackEndReason.Stopped); }
     public override bool Seek(int offset) => Voice.Seek(offset);
     public override void SetLoopPoints(int start, int end = -1) => Voice.SetLoopPoints(start, end);
     public override void AddModifier(SoundModifier modifier) => Voice.AddModifier(modifier);

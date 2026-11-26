@@ -19,6 +19,7 @@ internal sealed unsafe partial class Voice
     internal void PauseAfterNativeCommand()
     {
         _state = PlaybackState.Paused;
+        if (IsPrepared) { ScheduledAt = null; return; }
         _pump.Enable(false);
         _pump.Change(_transport.Pause, false);
         ScheduledAt = null;

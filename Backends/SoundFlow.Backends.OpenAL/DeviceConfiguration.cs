@@ -7,6 +7,10 @@ namespace SoundFlow.Backends.OpenAL;
 /// <summary>OpenAL context and streaming configuration. Configure before opening a device.</summary>
 public sealed class DeviceConfiguration : CoreDeviceConfiguration
 {
+    /// <summary>Hard native prepared-clip PCM budget in bytes. Unused uploads are evicted by least recent use; active references are never evicted.</summary>
+    public long PreparedClipBytes { get; init; } = 64 * 1024 * 1024;
+    /// <summary>Maximum idle prepared-source identifiers retained for reuse by this context.</summary>
+    public int MaximumIdleSources { get; init; } = 32;
     /// <summary>Frames per queue buffer; 512 by default. Must be 64 through 16384.</summary>
     public int BufferFrames { get; init; } = 512;
     /// <summary>Buffers per source; 4 by default. Must be 2 through 16.</summary>
@@ -23,6 +27,8 @@ public sealed class DeviceConfiguration : CoreDeviceConfiguration
 
     internal void Validate()
     {
+        if (PreparedClipBytes < 1) throw new ArgumentOutOfRangeException(nameof(PreparedClipBytes));
+        if (MaximumIdleSources is < 0 or > 4096) throw new ArgumentOutOfRangeException(nameof(MaximumIdleSources));
         if (BufferFrames is < 64 or > 16384) throw new ArgumentOutOfRangeException(nameof(BufferFrames));
         if (QueueBuffers is < 2 or > 16) throw new ArgumentOutOfRangeException(nameof(QueueBuffers));
         if (AuxiliarySends is < 0 or > 64) throw new ArgumentOutOfRangeException(nameof(AuxiliarySends));

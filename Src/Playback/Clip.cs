@@ -13,6 +13,8 @@ public sealed class Clip
     public AudioFormat Format { get; }
     /// <summary>Number of complete frames.</summary>
     public int Frames => _samples.Length / Format.Channels;
+    /// <summary>Borrowed immutable interleaved F32 data for backend uploads. Valid while this clip is retained.</summary>
+    public ReadOnlySpan<float> Samples => _samples;
     /// <summary>Copies complete interleaved frames into an immutable clip.</summary>
     public Clip(ReadOnlySpan<float> samples, AudioFormat format)
     {
@@ -24,4 +26,6 @@ public sealed class Clip
         _samples = samples.ToArray();
     }
     internal IDataProvider Open() => new RawDataProvider(_samples, Format.SampleRate);
+    /// <summary>Creates a caller-owned independent read cursor without copying the clip's immutable PCM.</summary>
+    public IDataProvider CreateProvider() => Open();
 }

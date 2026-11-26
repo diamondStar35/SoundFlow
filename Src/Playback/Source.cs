@@ -57,13 +57,35 @@ public abstract class Source : FeatureHost, IPlayer
     public float LoopEndSeconds => LoopEndSamples < 0 ? -1 : (float)LoopEndSamples / Format.Channels / Format.SampleRate;
     /// <summary>Raised once after audible queued PCM drains, independently of any remaining effect tail.</summary>
     public event EventHandler? PlaybackEnded;
+    /// <summary>Terminal outcome for the current playback, including explicit stop and failure. Delivered once per Play generation.</summary>
+    public event EventHandler<PlaybackTermination>? PlaybackTerminated;
+    private int _terminated;
+    /// <summary>Whether this source can run managed modifiers and publish per-source PCM during playback.</summary>
+    public virtual bool SupportsSoftwareProcessing => true;
+    private BufferCallback? _bufferProcessed;
     /// <summary>Borrowed source PCM after software modifiers and before native effects, raised on its processing worker.</summary>
-    public event BufferCallback? AudioBufferProcessed;
+    public event BufferCallback? AudioBufferProcessed
+    {
+        add { if (!SupportsSoftwareProcessing) throw new NotSupportedException("Prepared clips bypass managed PCM processing. Use an ordinary clip source for PCM callbacks."); _bufferProcessed += value; }
+        remove { _bufferProcessed -= value; }
+    }
     /// <summary>Publishes source-input PCM with its source format.</summary>
-    protected void PublishBuffer(Span<float> samples, AudioFormat? format = null) => AudioBufferProcessed?.Invoke(samples,
+    protected void PublishBuffer(Span<float> samples, AudioFormat? format = null) => _bufferProcessed?.Invoke(samples,
         new BufferInfo((format ?? Format) with { Format = SampleFormat.F32 }, ProcessingStage.SourceInput, Capability.Playback));
     /// <summary>Raises completion. Native adapters must defer this until their queues have drained.</summary>
-    protected void RaisePlaybackEnded() => PlaybackEnded?.Invoke(this, EventArgs.Empty);
+    protected void RaisePlaybackEnded()
+    {
+        if (Interlocked.Exchange(ref _terminated, 1) != 0) return;
+        try { PlaybackEnded?.Invoke(this, EventArgs.Empty); }
+        finally { PlaybackTerminated?.Invoke(this, new PlaybackTermination(PlaybackEndReason.Completed)); }
+    }
+    /// <summary>Starts a fresh lifecycle notification generation before enabling playback.</summary>
+    protected void BeginPlayback() => Interlocked.Exchange(ref _terminated, 0);
+    /// <summary>Publishes an explicit stop or terminal error without raising natural completion.</summary>
+    protected void RaisePlaybackTerminated(PlaybackEndReason reason, Exception? error = null)
+    {
+        if (Interlocked.Exchange(ref _terminated, 1) == 0) PlaybackTerminated?.Invoke(this, new PlaybackTermination(reason, error));
+    }
     /// <inheritdoc />
     public abstract void Play();
     /// <inheritdoc />
@@ -104,7 +126,7 @@ public abstract class Source : FeatureHost, IPlayer
         {
             if (Interlocked.Exchange(ref _disposeStarted, 1) != 0) return;
             try { DisposeSource(); }
-            finally { IsDisposed = true; Device.ReleaseSource(this); }
+            finally { IsDisposed = true; Device.ReleaseSource(this); RaisePlaybackTerminated(PlaybackEndReason.Disposed); }
             GC.SuppressFinalize(this);
         }
     }
