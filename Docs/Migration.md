@@ -41,3 +41,11 @@ Add an explicit MiniAudio reference where previously only core was referenced. O
 Source target files are flat but packaged at standard buildTransitive paths. Consumers should use native runtime assets rather than manually importing legacy package-root targets.
 
 Galactic Voyage consumer migration remains outside this repository change. Its old interface references and copy rules need migration before rebuilding. Original fork MIDI deletions remain intact.
+
+## Shared decoding and prepared clip phase
+
+Existing source/graph creation entry points remain. Set the new engine `PlaybackConfiguration` before creating devices or players. Software player input is now buffered: providers run on shared workers, playback time measures consumed content, and natural completion is dispatched after buffered PCM drains. Code manually driving `SoundComponent.Process` offline must prepare buffered leaves with `PrepareForRender` before each bounded chunk. Live audio callbacks must never call preparation.
+
+Use optional cancellation contracts for custom blocking inputs. Do not assume zero means EOF for a live provider, or that an arbitrary synchronous stream can be forcibly canceled. PCM callbacks reject disposal and blocking playback controls before state changes.
+
+Prepared clips and clip pools are explicit additions. Ordinary clip sources retain software processing; native prepared sources reject software modifiers, PCM taps, reverse/time-stretched transport and authored loop subranges. Pool leases automatically release on termination and must not be reused for a later playback. Native effects and diagnostics are discovered through registered features and effect-type support, not extension-name strings alone.

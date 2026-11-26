@@ -36,3 +36,5 @@ These commands consume precompiled libraries. OpenAL native compilation is restr
 Retained targets are Windows x64/ARM64, Linux x64/ARM64, macOS x64/ARM64, iOS ARM64 and Android ARM64. Only the supplied Windows x64 OpenAL runtime is present locally. Other native artifacts require workflow generation and validation before distribution is complete. MIDI backend files deleted by this fork remain deleted.
 
 This repository is based on [LSXPrime/SoundFlow](https://github.com/LSXPrime/SoundFlow). Preserve the repository license and packaged native-library notices when distributing binaries.
+
+Shared decoding workers, streaming cancellation, prepared native clips and priority-based transient playback are described in [Playback](Docs/Playback.md). The OpenAL backend also supports convolution responses, dedicated dialogue/LFE effects and opt-in native debug messages when the runtime provides them.

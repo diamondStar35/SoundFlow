@@ -21,3 +21,13 @@ Normal .NET builds copy precompiled libraries for the selected RID. Standard nat
 Retained platforms are Windows x64/ARM64, Linux x64/ARM64, macOS x64/ARM64, iOS ARM64 and Android ARM64. Removed architectures are absent from assets and build matrices.
 
 See [architecture](../Architecture.md) for ownership/stages and [migration](../Migration.md) for renamed types.
+
+## Buffered streaming and transient clips
+
+Software sources and existing `SoundPlayer` graph players now obtain prepared PCM from the engine's shared decoding scheduler. Provider reads, codec work and transport processing run on those workers, not MiniAudio's audio callback. The callback still performs software graph DSP and mixing, so custom graph work must remain bounded and nonblocking.
+
+Use `Engine.PlaybackConfiguration` to choose fixed worker and PCM-buffer limits before creating playback resources. Live empty queues produce silence rather than waiting for I/O. Use explicit `PrepareForRender()` for manually driven offline graph tests. Cancellation-aware built-in stream decoding propagates tokens into the selected codec; noncooperative custom streams can still delay shutdown.
+
+`PlaybackDevice.CreatePool` supports clip admission, priority stealing and protected leases through the shared software implementation. MiniAudio does not advertise native prepared clips or native spatial sources. Existing software spatial/DSP graphs remain available through ordinary graph playback. Validated device transfers also move software pools and their occupied sources.
+
+See [Playback](../Playback.md) for ownership, completion timing, callback restrictions and examples.

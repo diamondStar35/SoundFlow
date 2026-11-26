@@ -16,7 +16,11 @@ Derive from `Playback.Source`, or `Playback.SpatialSource` for native positional
 
 Use public `Playback.Transport` for seeking, loops, reverse reads and WSOLA. `Read` returns a sample count plus Data/Starved/Completed. Serialize controls with reads. When native queues decode ahead, maintain a separate audible cursor and signal completion only after queued input drains. Completion does not imply effect tails are silent.
 
-`Providers.IDataProvider` returns interleaved floats through synchronous `ReadSamples` and must preserve frames. Temporary empty reads are not EOF. Reads must eventually return for disposal to join workers; design blocking inputs with cancellation in mind.
+`Providers.IDataProvider` returns interleaved floats through synchronous `ReadSamples` and must preserve frames. Temporary empty reads are not EOF. Implement optional `ICancellableDataProvider`/`ICancellableDecoder` contracts for blocking input. Forward the token through adapters and use `StreamInput` to capture I/O failures inside native callbacks. A canceled native decoder is terminal; noncooperative reads must eventually return.
+
+Use `engine.Decoding` and public `DecodeSession` for bounded producer storage and serialized transport processing. `TryTake(false)` consumes only ready PCM; return borrowed blocks exactly once with `Release`. Never read providers in a physical audio callback. Offline preparation may wait on its caller; a decoding worker must not wait for another decoding job. Inline sessions are reserved for nonblocking graph generation, with graph leaves prepared outside live processing.
+
+Mark synchronous graph/PCM work with `Playback.ProcessingScope` and reject controls/disposal before modifying lifetime state. Backend engine overrides should call `ValidatePlaybackDisposal` before starting teardown. Call `BeginPlayback` for each new source playback, `RaisePlaybackEnded` after the audible queue drains, and `RaisePlaybackTerminated` for explicit stop/failure.
 
 `Clip` supplies independent cursors over copied immutable samples. Preserve input channels unless conversion is explicit. A backend without spatial rendering should retain the default spatial-creation rejection.
 
@@ -28,9 +32,11 @@ Feature interfaces describe behavior rather than native tokens. Register only us
 
 Define backend-specific immutable records deriving from `Effects.Settings`. Validate their parameters and document units/ranges. Implement `IEffects` and `Slot` for those records without editing core. Dispatch known settings types explicitly for NativeAOT compatibility.
 
-Send routing is a separate `IEffectSends` interface. A backend may expose effects, advertise zero sends and reject chaining. Do not imitate EFX topology if the backend has another model. Runtime registration of arbitrary OpenAL bindings is outside this phase.
+Send routing is a separate `IEffectSends` interface. A backend may expose effects, advertise zero sends and reject chaining. Do not imitate EFX topology if the backend has another model. OpenAL uses explicit bindings for supported settings; it does not offer raw extension handles or runtime registration of arbitrary native effect bindings.
 
 Slots belong to one device. Reject foreign routes, disposed resources and cycles. Allocate a replacement effect before changing an existing snapshot. Detach links before deleting native resources.
+
+For an optimized immutable clip path, implement `IPreparedClips` and device-owned `PreparedClip`. Retain an independent upload reference for every created source, expose actual processing restrictions through `Source.SupportsSoftwareProcessing`, and reject unavailable software operations. `PlaybackPool` discovers this feature automatically; backends without it use software clips. Reuse native resources rather than public source objects, and reset every native property before reuse.
 
 ## Threading and verification
 

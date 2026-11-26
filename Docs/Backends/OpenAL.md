@@ -134,4 +134,14 @@ Provenance records the pin, compiler options and two libc++ patches replacing am
 
 Desktop project references copy the selected RID into lib; NuGet uses runtime assets. iOS transitive targets embed frameworks. Android uses its packaged library search and ARM64/16 KiB-compatible ELF alignment.
 
-Ambisonics/UHJ, callback-buffer input, convolution, voice virtualization and legacy EAX remain deferred.
+Prepared uploads, explicit clip pooling and shared decoding are covered in [Playback](../Playback.md). Native prepared sources support spatialization and wet effects without decoding sessions, with explicit software-processing restrictions.
+
+Dedicated dialogue/LFE settings are available when `ALC_EXT_DEDICATED` and effect probes succeed. They route a wet signal according to the output layout; LFE routing is not a bass-boost filter and requires a suitable output path.
+
+`ConvolutionSettings` uses `AL_SOFTX_convolution_effect` from the pinned runtime. Supply a nonempty mono/stereo impulse-response `Clip` and optional forward/up orientation. Responses are retained in the prepared-PCM cache while attached; gains are not normalized. Slot updates prepare the effect and response before changing the current snapshot and restore the previous snapshot on attachment failure. Large or pinned responses can exhaust the configured native clip budget.
+
+Request `DeviceConfiguration.DebugMessages = true` to create a native debug context. Optional `OpenAL.Features.IDebugOutput` filters severities, labels sources/slots and delivers copied messages through bounded diagnostics outside native callbacks. Unsupported debug requests fail explicitly; debugging is disabled by default. `IDiagnostics` includes shared decoding counts, clip storage, allocation/reuse totals and implemented SoundFlow features separately from native extension names.
+
+Additional sample commands: `--prepared-offline output.wav`, `--convolution-offline output.wav`, `--debug-offline output.wav`, and `--pool-stress report.txt`. All use offline rendering.
+
+Ambisonics/UHJ, callback/mapped-buffer APIs, virtualization, streamed-input pooling, geometry acoustics and legacy EAX remain deferred.

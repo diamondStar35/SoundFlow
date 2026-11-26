@@ -14,7 +14,7 @@ public interface ISoundDecoder : IDisposable
     bool IsDisposed { get; }
 
     /// <summary>
-    ///     Gets the length of the PCM frames known to the decoder.
+    ///     Gets the length in interleaved PCM samples known to the decoder.
     ///     May be zero if audio is a stream or simply unknown to the audio format.
     /// </summary>
     int Length { get; }

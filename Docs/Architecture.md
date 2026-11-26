@@ -54,9 +54,13 @@ Decoded position can lead playback by the queued PCM. OpenAL source `Time` maps 
 
 OpenAL physical output exposes GraphOutput, not its final mix. Offline output exposes graph and final buffers. MiniAudio exposes its final software mix. The legacy `OnAudioProcessed` callback runs only for Capture/FinalOutput; graph PCM must not masquerade as a final echo-cancellation reference.
 
-Spans are borrowed only for the callback. Do not retain them, block, dispose resources or issue synchronous native controls from PCM callbacks. OpenAL rejects these control cycles before they enter its worker queue. Final offline callbacks run on the rendering caller; source callbacks run on decode workers; capture callbacks run on the capture worker.
+Spans are borrowed only for the callback. Do not retain them, block, dispose resources or issue synchronous native controls from PCM callbacks. OpenAL rejects these control cycles before they enter its worker queue. Final offline callbacks run on the rendering caller. OpenAL streaming-source callbacks run on shared decoding workers; MiniAudio source taps run during software graph processing. Prepared native clips do not publish source PCM. Capture callbacks run on the capture worker.
 
-Each OpenAL context has one native worker. Each voice has a bounded reusable PCM pool and decoder worker. Providers must eventually return from reads for their worker to join during disposal. No thread is forcibly aborted. Offline render calls and final-buffer callbacks are serialized together.
+Each engine has a fixed shared decoding worker set. Stream/provider reads and transport processing run there for both MiniAudio and OpenAL. Each player retains bounded reusable PCM blocks; no source owns a decoding thread. MiniAudio consumes those blocks in its callback; OpenAL's context worker uploads them. Graph feeds prepare dependencies explicitly offline, so one worker can support nested built-in graphs without workers waiting on other decoding jobs.
+
+Prepared OpenAL clips share immutable native uploads and bypass decoding sessions. Explicit clip pools manage admission and recycle backend resources while retaining fresh logical source identities. [Playback](Playback.md) documents buffering, priorities, memory budgets and limitations.
+
+Shutdown rejects new sessions and requests cooperative cancellation before waiting for providers. Noncooperative custom reads must eventually return. No thread is forcibly aborted. Offline render calls and final-buffer callbacks are serialized together.
 
 OpenAL completion and backend notifications run on a managed dispatcher outside native callbacks and transport locks. Handlers may issue controls and should return promptly. Diagnostic notifications have a bounded queue and overflow counter. Completion is important delivery and is not dropped under diagnostic pressure; pending deliveries are cancelled when their owner is disposed.
 
