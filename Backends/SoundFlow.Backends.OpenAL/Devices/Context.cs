@@ -102,6 +102,7 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
             InitializeEffects();
             InitializeHrtf();
             InitializeNotifications();
+            InitializeDebug();
             Al.CheckAl("Initialize context");
         }
         catch { Cleanup(); throw; }
@@ -119,6 +120,11 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         if (output.HasValue) attributes.AddRange([0x19AC, OutputModeToken(output.Value)]);
         var limiter = replacement?.OutputLimiter ?? _outputLimiter;
         if (limiter.HasValue) attributes.AddRange([0x199A, limiter.Value ? 1 : 0]);
+        if (Config.DebugMessages)
+        {
+            if (!Al.HasAlcExtension(Device, "ALC_EXT_debug")) throw new NotSupportedException("Debug contexts are unavailable on this device.");
+            attributes.AddRange([0x19CF, 1]);
+        }
         attributes.Add(0);
         return attributes.ToArray();
     }
@@ -219,6 +225,9 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
 
     public DiagnosticsSnapshot GetSnapshot() => Worker.Invoke(() => new DiagnosticsSnapshot
     {
+        ImplementedFeatures = Owner.AvailableFeatures.Select(type => type.FullName ?? type.Name).Order().ToArray(),
+        Decoding = _engine.Decoding.GetSnapshot(), SourceAllocations = SourceAllocations, BufferAllocations = BufferAllocations,
+        ReusedSources = ReusedSources, PreparedClipBytes = _clipBytes, PreparedClips = _clips.Count, IdleSources = _idleSources.Count,
         Backend = "OpenAL Soft", Library = $"{_version} ({Al.LibraryPath})", Device = _deviceName,
         Format = Owner.Format, Extensions = Array.AsReadOnly(_extensions), AuxiliarySends = MaximumSends,
         Sources = Sources.Count(s => !s.IsGraphFeed), EffectSlots = Slots.Count, Underruns = Sources.Sum(s => s.Underruns),
@@ -227,12 +236,11 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         LastFailure = _lastFailure, DroppedNotifications = DroppedNotifications
     });
 
-    internal void Label(int kind, uint id, string label) { }
-
     private void Cleanup()
     {
         if (_context != 0)
         {
+            RemoveDebug();
             RemoveNotifications();
             DisposePreparedBuffers();
             if (Al.alcSetThreadContext != null) Al.alcSetThreadContext(0);

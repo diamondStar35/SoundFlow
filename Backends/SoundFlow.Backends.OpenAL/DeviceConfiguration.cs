@@ -7,6 +7,10 @@ namespace SoundFlow.Backends.OpenAL;
 /// <summary>OpenAL context and streaming configuration. Configure before opening a device.</summary>
 public sealed class DeviceConfiguration : CoreDeviceConfiguration
 {
+    /// <summary>Requests a debug context and managed delivery of AL_EXT_debug messages. Disabled by default.</summary>
+    public bool DebugMessages { get; init; }
+    /// <summary>Least important native debug severity to deliver when enabled; Medium includes High and Medium.</summary>
+    public Features.DebugSeverity DebugMinimumSeverity { get; init; } = Features.DebugSeverity.Medium;
     /// <summary>Hard native prepared-clip PCM budget in bytes. Unused uploads are evicted by least recent use; active references are never evicted.</summary>
     public long PreparedClipBytes { get; init; } = 64 * 1024 * 1024;
     /// <summary>Maximum idle prepared-source identifiers retained for reuse by this context.</summary>
@@ -27,6 +31,7 @@ public sealed class DeviceConfiguration : CoreDeviceConfiguration
 
     internal void Validate()
     {
+        if (!Enum.IsDefined(DebugMinimumSeverity)) throw new ArgumentOutOfRangeException(nameof(DebugMinimumSeverity));
         if (PreparedClipBytes < 1) throw new ArgumentOutOfRangeException(nameof(PreparedClipBytes));
         if (MaximumIdleSources is < 0 or > 4096) throw new ArgumentOutOfRangeException(nameof(MaximumIdleSources));
         if (BufferFrames is < 64 or > 16384) throw new ArgumentOutOfRangeException(nameof(BufferFrames));

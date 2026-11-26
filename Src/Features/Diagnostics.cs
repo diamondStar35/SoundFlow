@@ -1,10 +1,27 @@
 using SoundFlow.Structs;
+using SoundFlow.Playback;
 
 namespace SoundFlow.Features;
 
 /// <summary>A snapshot of an initialized backend's negotiated state.</summary>
 public sealed record DiagnosticsSnapshot
 {
+    /// <summary>SoundFlow interfaces actually registered on the device, distinct from all native extension names.</summary>
+    public IReadOnlyList<string> ImplementedFeatures { get; init; } = [];
+    /// <summary>Engine-wide managed PCM producer counts and ready storage.</summary>
+    public DecodingSnapshot Decoding { get; init; }
+    /// <summary>Lifetime native source allocations, including graph feeds; reused identifiers do not increment this.</summary>
+    public long SourceAllocations { get; init; }
+    /// <summary>Lifetime native buffer allocations, including streaming queues and prepared PCM.</summary>
+    public long BufferAllocations { get; init; }
+    /// <summary>Prepared-source identifiers successfully reused by fresh logical sources.</summary>
+    public long ReusedSources { get; init; }
+    /// <summary>Current native prepared PCM bytes, including referenced impulse responses and unused cached clips.</summary>
+    public long PreparedClipBytes { get; init; }
+    /// <summary>Current cached native clip uploads.</summary>
+    public int PreparedClips { get; init; }
+    /// <summary>Idle native sources retained for subsequent prepared playback.</summary>
+    public int IdleSources { get; init; }
     /// <summary>Backend implementation.</summary>
     public required string Backend { get; init; }
     /// <summary>Loaded native version and library path.</summary>

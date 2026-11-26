@@ -7,6 +7,8 @@ namespace SoundFlow.Features;
 public abstract class FeatureHost
 {
     private readonly Dictionary<Type, object> _features = new();
+    /// <summary>Explicitly registered feature interfaces. This allocates a snapshot for discovery; do not query it in an audio callback.</summary>
+    public IReadOnlyCollection<Type> AvailableFeatures => _features.Keys.ToArray();
 
     /// <summary>Returns an available feature, or false when the host does not implement it.</summary>
     public bool TryGetFeature<T>([NotNullWhen(true)] out T? feature) where T : class

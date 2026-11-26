@@ -93,6 +93,10 @@ internal sealed unsafe class Functions : IDisposable
     public readonly delegate* unmanaged[Cdecl]<int, int, int> alcEventIsSupportedSOFT;
     public readonly delegate* unmanaged[Cdecl]<int, int*, byte, byte> alcEventControlSOFT;
     public readonly delegate* unmanaged[Cdecl]<delegate* unmanaged[Cdecl]<int, int, nint, int, byte*, nint, void>, nint, void> alcEventCallbackSOFT;
+    public readonly delegate* unmanaged[Cdecl]<delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, nint, void>, nint, void> alDebugMessageCallbackEXT;
+    public readonly delegate* unmanaged[Cdecl]<int, int, int, int, uint*, byte, void> alDebugMessageControlEXT;
+    public readonly delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, void> alDebugMessageInsertEXT;
+    public readonly delegate* unmanaged[Cdecl]<int, uint, int, byte*, void> alObjectLabelEXT;
     public Functions(string? explicitPath)
     {
         var filename = OperatingSystem.IsWindows() ? "soft_oal.dll" : OperatingSystem.IsMacOS() ? "libopenal.dylib" : "libopenal.so";
@@ -165,6 +169,10 @@ internal sealed unsafe class Functions : IDisposable
             alcGetStringiSOFT = (delegate* unmanaged[Cdecl]<nint, int, int, byte*>)FindExtension("alcGetStringiSOFT");
             alcDevicePauseSOFT = (delegate* unmanaged[Cdecl]<nint, void>)FindExtension("alcDevicePauseSOFT");
             alcDeviceResumeSOFT = (delegate* unmanaged[Cdecl]<nint, void>)FindExtension("alcDeviceResumeSOFT");
+            alDebugMessageCallbackEXT = (delegate* unmanaged[Cdecl]<delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, nint, void>, nint, void>)FindExtension("alDebugMessageCallbackEXT");
+            alDebugMessageControlEXT = (delegate* unmanaged[Cdecl]<int, int, int, int, uint*, byte, void>)FindExtension("alDebugMessageControlEXT");
+            alDebugMessageInsertEXT = (delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, void>)FindExtension("alDebugMessageInsertEXT");
+            alObjectLabelEXT = (delegate* unmanaged[Cdecl]<int, uint, int, byte*, void>)FindExtension("alObjectLabelEXT");
             alGenEffects = (delegate* unmanaged[Cdecl]<int, uint*, void>)FindExtension("alGenEffects");
             alDeleteEffects = (delegate* unmanaged[Cdecl]<int, uint*, void>)FindExtension("alDeleteEffects");
             alEffecti = (delegate* unmanaged[Cdecl]<uint, int, int, void>)FindExtension("alEffecti");

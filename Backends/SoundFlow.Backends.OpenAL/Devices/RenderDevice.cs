@@ -29,6 +29,7 @@ internal sealed class RenderDevice : CoreRenderDevice
         _context = new Context(engine, this, null, config, true, graphTap: (data, count) => PublishBuffer(data.AsSpan(0, count), ProcessingStage.GraphOutput));
         RegisterFeature<IScene>(_context);
         RegisterFeature<IPreparedClips>(_context);
+        if (_context.HasDebug) RegisterFeature<Features.IDebugOutput>(_context);
         RegisterFeature<IDiagnostics>(_context);
         RegisterFeature<Features.IDeviceRendering>(_context);
         RegisterFeature<INotifications>(_context);
