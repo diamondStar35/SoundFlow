@@ -12,10 +12,11 @@ namespace SoundFlow.Backends.MiniAudio;
 /// <summary>
 ///     An object to assist with converting audio formats into raw PCM frames.
 /// </summary>
-internal sealed unsafe class Decoder : ISoundDecoder
+internal sealed unsafe class Decoder : ICancellableDecoder
 {
     private readonly nint _decoder;
     private readonly Stream _stream;
+    private readonly SoundFlow.Playback.StreamInput _input;
 
     // Keep references to delegates to prevent GC collection while native code uses them
     private readonly Native.BufferProcessingCallback _readCallback;
@@ -36,6 +37,7 @@ internal sealed unsafe class Decoder : ISoundDecoder
     public Decoder(Stream stream, SampleFormat sampleFormat, int channels, int sampleRate, uint seekPointCount = 100)    // 0 = disable, use binary search only)
     {
         _stream = stream ?? throw new ArgumentNullException(nameof(stream));
+        _input = new(stream);
         SampleFormat = sampleFormat;
         Channels = channels;
         SampleRate = sampleRate;
@@ -90,10 +92,14 @@ internal sealed unsafe class Decoder : ISoundDecoder
     /// <summary>
     ///     Decodes the next several samples.
     /// </summary>
-    public int Decode(Span<float> samples)
+    public int Decode(Span<float> samples) => Decode(samples, default);
+
+    /// <inheritdoc />
+    public int Decode(Span<float> samples, CancellationToken cancellationToken)
     {
         lock (_syncLock)
         {
+            _input.Begin(cancellationToken);
             if (IsDisposed || _endOfStreamReached)
                 return 0;
 
@@ -108,6 +114,7 @@ internal sealed unsafe class Decoder : ISoundDecoder
             {
                 var result = Native.DecoderReadPcmFrames(_decoder, (nint)nativeBuffer, framesToRead, out var framesRead);
 
+                _input.ThrowIfFailed();
                 // If we reached the end of the stream, set the flag and return 0
                 if (result == Result.AtEnd)
                 {
@@ -246,7 +253,7 @@ internal sealed unsafe class Decoder : ISoundDecoder
                     _rentedReadBuffer = ArrayPool<byte>.Shared.Rent(size);
                 }
 
-                var read = _stream.Read(_rentedReadBuffer, 0, size);
+                var read = _input.Read(_rentedReadBuffer.AsSpan(0, size));
 
                 if (read > 0)
                 {
@@ -345,6 +352,7 @@ internal sealed unsafe class Decoder : ISoundDecoder
             GC.KeepAlive(_readCallback);
             GC.KeepAlive(_seekCallbackCallback);
 
+            _input.Dispose();
             IsDisposed = true;
         }
     }

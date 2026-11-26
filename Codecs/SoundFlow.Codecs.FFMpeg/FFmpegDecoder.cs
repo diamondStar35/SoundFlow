@@ -12,10 +12,11 @@ namespace SoundFlow.Codecs.FFMpeg;
 /// An <see cref="ISoundDecoder"/> implementation that uses a native FFmpeg wrapper
 /// to decode various audio formats.
 /// </summary>
-internal sealed class FFmpegDecoder : ISoundDecoder
+internal sealed class FFmpegDecoder : ICancellableDecoder
 {
     private readonly SafeDecoderHandle _handle;
     private readonly Stream _stream;
+    private readonly SoundFlow.Playback.StreamInput _input;
     private readonly FFmpeg.ReadCallback _readCallback;
     private readonly FFmpeg.SeekCallback _seekCallback;
 
@@ -27,6 +28,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     public FFmpegDecoder(Stream stream, AudioFormat targetFormat)
     {
         _stream = stream;
+        _input = new(stream);
 
         _readCallback = OnRead;
         _seekCallback = OnSeek;
@@ -86,8 +88,12 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     public event EventHandler<EventArgs>? EndOfStreamReached;
 
     /// <inheritdoc />
-    public unsafe int Decode(Span<float> samples)
+    public int Decode(Span<float> samples) => Decode(samples, default);
+
+    /// <inheritdoc />
+    public unsafe int Decode(Span<float> samples, CancellationToken cancellationToken)
     {
+        _input.Begin(cancellationToken);
         if (IsDisposed || samples.IsEmpty) return 0;
 
         var framesToRead = samples.Length / Channels;
@@ -96,6 +102,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
         fixed (float* pSamples = samples)
         {
             var result = FFmpeg.ReadPcmFrames(_handle, (IntPtr)pSamples, framesToRead, out framesRead);
+            _input.ThrowIfFailed();
             if (result != FFmpegResult.Success)
             {
                 throw new FFmpegException(result, $"An unrecoverable error occurred during decoding. Result: {result}");
@@ -123,17 +130,8 @@ internal sealed class FFmpegDecoder : ISoundDecoder
 
     private unsafe nuint OnRead(IntPtr pUserData, IntPtr pBuffer, nuint bytesToRead)
     {
-        try
-        {
-            var buffer = new Span<byte>((void*)pBuffer, (int)bytesToRead);
-            return (nuint)_stream.Read(buffer);
-        }
-        catch
-        {
-            Log.Critical("Failed to read from stream.");
-            // Signal error/EOF to FFmpeg by returning 0. FFmpeg will handle this gracefully as AVERROR_EOF.
-            return 0;
-        }
+        var buffer = new Span<byte>((void*)pBuffer, checked((int)bytesToRead));
+        return (nuint)_input.Read(buffer);
     }
 
     private long OnSeek(IntPtr pUserData, long offset, SeekWhence whence)
@@ -160,6 +158,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     {
         if (IsDisposed) return;
         _handle.Dispose();
+        _input.Dispose();
 
         // Ensure the delegates are not collected while the native code might still be using them.
         GC.KeepAlive(_readCallback);

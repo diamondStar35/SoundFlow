@@ -7,7 +7,7 @@ using SoundFlow.Structs;
 namespace SoundFlow.Playback;
 
 /// <summary>Adapts a source provider to the software output format without introducing a native codec dependency.</summary>
-internal sealed class ConvertedDataProvider : IDataProvider
+internal sealed class ConvertedDataProvider : ICancellableDataProvider
 {
     private readonly PcmFormatConvertingDecoder _decoder;
     private readonly bool _canSeek;
@@ -26,9 +26,10 @@ internal sealed class ConvertedDataProvider : IDataProvider
     public SoundFormatInfo? FormatInfo => null;
     public event EventHandler<EventArgs>? EndOfStreamReached;
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
-    public int ReadSamples(Span<float> buffer)
+    public int ReadSamples(Span<float> buffer) => ReadSamples(buffer, default);
+    public int ReadSamples(Span<float> buffer, CancellationToken cancellationToken)
     {
-        var read = _decoder.Decode(buffer); Position += read;
+        var read = _decoder.Decode(buffer, cancellationToken); Position += read;
         if (read > 0) PositionChanged?.Invoke(this, new PositionChangedEventArgs(Position));
         return read;
     }
@@ -39,7 +40,7 @@ internal sealed class ConvertedDataProvider : IDataProvider
     }
     public void Dispose() => _decoder.Dispose();
 
-    private sealed class ProviderDecoder : ISoundDecoder
+    private sealed class ProviderDecoder : ICancellableDecoder
     {
         private readonly IDataProvider _provider;
         private readonly AudioFormat _format;
@@ -56,6 +57,8 @@ internal sealed class ConvertedDataProvider : IDataProvider
         public int SampleRate => _format.SampleRate;
         public event EventHandler<EventArgs>? EndOfStreamReached;
         public int Decode(Span<float> samples) => _provider.ReadSamples(samples);
+        public int Decode(Span<float> samples, CancellationToken cancellationToken)
+            => _provider is ICancellableDataProvider cooperative ? cooperative.ReadSamples(samples, cancellationToken) : _provider.ReadSamples(samples);
         public bool Seek(int offset) { if (!_provider.CanSeek) return false; _provider.Seek(offset); return true; }
         public void Dispose() { _provider.EndOfStreamReached -= ForwardEnd; _provider.Dispose(); }
     }

@@ -4,7 +4,7 @@ using SoundFlow.Interfaces;
 namespace SoundFlow.Playback;
 
 /// <summary>Converts decoded F32 frames between channel counts and sample rates using bounded linear interpolation.</summary>
-public sealed class PcmFormatConvertingDecoder : ISoundDecoder
+public sealed class PcmFormatConvertingDecoder : ICancellableDecoder
 {
     private readonly ISoundDecoder _inner;
     private readonly int _sourceChannels;
@@ -15,6 +15,7 @@ public sealed class PcmFormatConvertingDecoder : ISoundDecoder
     private int _validSamples;
     private double _sourceFrameCursor;
     private bool _innerEnded;
+    private CancellationToken _cancellation;
     private bool _endOfStreamRaised;
 
     /// <summary>Creates a converter which owns its input decoder. PCM is always represented as interleaved floats.</summary>
@@ -32,6 +33,9 @@ public sealed class PcmFormatConvertingDecoder : ISoundDecoder
         SampleFormat = inner.SampleFormat;
         Length = CalculateTargetLength(inner.Length);
     }
+
+    private int DecodeInner(Span<float> samples) => _inner is ICancellableDecoder cooperative
+        ? cooperative.Decode(samples, _cancellation) : _inner.Decode(samples);
 
     private void InnerEnded(object? sender, EventArgs args) => _innerEnded = true;
 
@@ -51,8 +55,13 @@ public sealed class PcmFormatConvertingDecoder : ISoundDecoder
     public event EventHandler<EventArgs>? EndOfStreamReached;
 
     /// <inheritdoc />
-    public int Decode(Span<float> samples)
+    public int Decode(Span<float> samples) => Decode(samples, default);
+
+    /// <inheritdoc />
+    public int Decode(Span<float> samples, CancellationToken cancellationToken)
     {
+        _cancellation = cancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
         if (IsDisposed || samples.IsEmpty)
             return 0;
 
@@ -140,7 +149,7 @@ public sealed class PcmFormatConvertingDecoder : ISoundDecoder
             var writeOffset = _validSamples;
             EnsureCapacity(writeOffset + (framesToRead * _sourceChannels));
 
-            var samplesRead = _inner.Decode(_sourceBuffer.AsSpan(writeOffset, framesToRead * _sourceChannels));
+            var samplesRead = DecodeInner(_sourceBuffer.AsSpan(writeOffset, framesToRead * _sourceChannels));
             if (samplesRead <= 0)
             {
                 break;

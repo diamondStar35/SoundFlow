@@ -12,7 +12,7 @@ namespace SoundFlow.Providers;
 /// <summary>
 ///     Provides audio data from a stream.
 /// </summary>
-public sealed class StreamDataProvider : IDataProvider
+public sealed class StreamDataProvider : ICancellableDataProvider
 {
     private readonly ISoundDecoder _decoder;
     private readonly Stream _stream;
@@ -197,9 +197,14 @@ public sealed class StreamDataProvider : IDataProvider
 
     /// <inheritdoc />
     public int ReadSamples(Span<float> buffer)
+        => ReadSamples(buffer, default);
+
+    /// <summary>Reads incrementally through the registered codec, forwarding cooperative cancellation when supported.</summary>
+    public int ReadSamples(Span<float> buffer, CancellationToken cancellationToken)
     {
         if (IsDisposed) return 0;
-        var count = _decoder.Decode(buffer);
+        cancellationToken.ThrowIfCancellationRequested();
+        var count = _decoder is ICancellableDecoder cooperative ? cooperative.Decode(buffer, cancellationToken) : _decoder.Decode(buffer);
         Position += count;
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(Position));
         return count;

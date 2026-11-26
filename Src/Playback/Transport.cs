@@ -15,7 +15,7 @@ public sealed class Transport : IDisposable
     private int _rawSamplePosition;
     private readonly bool _leaveOpen;
     private volatile bool _providerEnded;
-    private readonly float[] _reverseCache;
+    private float[] _reverseCache = [];
     private int _reverseCacheStart = -1;
     private int _reverseCacheFrames;
     private double _reverseCursor;
@@ -39,7 +39,15 @@ public sealed class Transport : IDisposable
     private float _playbackSpeed = 1.0f;
     private int _loopStartSamples;
     private int _loopEndSamples = -1;
-    private readonly WsolaTimeStretcher _timeStretcher;
+    private WsolaTimeStretcher? _stretcher;
+    private WsolaTimeStretcher _timeStretcher => _stretcher ??= new WsolaTimeStretcher(Format.Channels, _playbackSpeed, _timeStretchConfig);
+    private CancellationToken _readCancellation;
+    private int ReadProvider(Span<float> samples)
+    {
+        _readCancellation.ThrowIfCancellationRequested();
+        return _dataProvider is ICancellableDataProvider cooperative
+            ? cooperative.ReadSamples(samples, _readCancellation) : _dataProvider.ReadSamples(samples);
+    }
     private float[] _timeStretcherInputBuffer;
     private int _timeStretcherInputBufferValidSamples;
     private int _timeStretcherInputBufferReadOffset;
@@ -58,7 +66,7 @@ public sealed class Transport : IDisposable
             // to prevent processing stale data in the wrong direction.
             if (Math.Sign(_playbackSpeed) != Math.Sign(value) && _playbackSpeed != 0)
             {
-                _timeStretcher.Reset();
+                _stretcher?.Reset();
                 _resampleBufferValidSamples = 0;
                 _timeStretcherInputBufferValidSamples = 0;
                 _timeStretcherInputBufferReadOffset = 0;
@@ -177,17 +185,21 @@ public sealed class Transport : IDisposable
         var initialSampleRate = format.SampleRate > 0 ? format.SampleRate : 44100;
         var resampleBufferFrames = Math.Max(256, initialSampleRate / 10);
         _resampleBuffer = new float[resampleBufferFrames * initialChannels];
-        _reverseCache = new float[8192 * initialChannels];
+        
 
         // Initialize with default fast config
         _timeStretchConfig = WsolaConfig.FromPreset(WsolaPerformancePreset.Fast);
-        _timeStretcher = new WsolaTimeStretcher(initialChannels, _playbackSpeed, _timeStretchConfig);
-        _timeStretcherInputBuffer = new float[Math.Max(_timeStretcher.MinInputSamplesToProcess * 2, 8192 * initialChannels)];
+        _timeStretcherInputBuffer = [];
     }
 
     /// <summary>Fills complete interleaved frames and clears any unproduced remainder. LastReadSamples identifies valid PCM; use Read for explicit starvation/completion status.</summary>
-    public void Render(Span<float> output, int channels)
+    public void Render(Span<float> output, int channels) => Render(output, channels, default);
+
+    /// <summary>Renders a serialized block with cooperative cancellation of underlying reads.</summary>
+    public void Render(Span<float> output, int channels, CancellationToken cancellationToken)
     {
+        _readCancellation = cancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
         LastReadSamples = 0;
         // Clear output if not playing or no channels.
         if (State != PlaybackState.Playing || channels == 0)
@@ -221,6 +233,7 @@ public sealed class Transport : IDisposable
             return;
         }
 
+        EnsureTimeStretcherBufferSize();
         // Ensure time stretcher has correct channel count.
         if (_playbackSpeed > 0 && _timeStretcher.GetTargetSpeed() == 0f && _playbackSpeed != 0f && channels > 0)
             _timeStretcher.SetChannels(channels);
@@ -599,7 +612,7 @@ public sealed class Transport : IDisposable
         State = PlaybackState.Stopped;
         Enabled = false;
         Seek(0, Format.Channels);
-        _timeStretcher.Reset();
+        _stretcher?.Reset();
         _resampleBufferValidSamples = 0;
         Array.Clear(_resampleBuffer, 0, _resampleBuffer.Length);
         _timeStretcherInputBufferValidSamples = 0;
@@ -672,7 +685,7 @@ public sealed class Transport : IDisposable
         _reverseCacheStart = -1;
         _currentFractionalFrame = 0f;
         _resampleBufferValidSamples = 0;
-        _timeStretcher.Reset();
+        _stretcher?.Reset();
         _timeStretcherInputBufferValidSamples = 0;
         _timeStretcherInputBufferReadOffset = 0;
         return true;
@@ -769,13 +782,13 @@ public sealed class Transport : IDisposable
             _dataProvider.Seek(start); _providerEnded = false;
         }
         var count = end > 0 ? Math.Min(output.Length, end - _dataProvider.Position) : output.Length;
-        var read = _dataProvider.ReadSamples(output[..count]);
+        var read = ReadProvider(output[..count]);
         if (read < 0 || read > count || read % Format.Channels != 0)
             throw new InvalidOperationException("A provider must return complete frames within its requested buffer.");
         if (read == 0 && IsLooping && _dataProvider.CanSeek && end > start && _dataProvider.Position > start)
         {
             _dataProvider.Seek(start); _providerEnded = false;
-            read = _dataProvider.ReadSamples(output[..Math.Min(output.Length, end - start)]);
+            read = ReadProvider(output[..Math.Min(output.Length, end - start)]);
         }
         return read;
     }
@@ -784,6 +797,7 @@ public sealed class Transport : IDisposable
     private void RenderReverse(Span<float> output, int channels)
     {
         if (!_dataProvider.CanSeek) throw new NotSupportedException("Reverse playback requires seeking.");
+        if (_reverseCache.Length == 0) _reverseCache = new float[8192 * channels];
         output.Clear();
         var start = IsLooping ? _loopStartSamples / channels : 0;
         var end = (IsLooping && _loopEndSamples >= 0 ? _loopEndSamples : _dataProvider.Length) / channels;
@@ -806,7 +820,7 @@ public sealed class Transport : IDisposable
                 var read = 0;
                 while (read < capacity)
                 {
-                    var added = _dataProvider.ReadSamples(_reverseCache.AsSpan(read, capacity - read));
+                    var added = ReadProvider(_reverseCache.AsSpan(read, capacity - read));
                     if (added == 0) break;
                     read += added;
                 }
