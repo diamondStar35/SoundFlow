@@ -18,23 +18,28 @@ internal static unsafe class SettingsBinding
         typeof(RingModulatorSettings),
         typeof(AutowahSettings),
         typeof(CompressorSettings),
-        typeof(EqualizerSettings)];
-    internal static int Kind(Settings settings) => settings switch
+        typeof(EqualizerSettings),
+        typeof(DedicatedDialogueSettings), typeof(DedicatedLowFrequencySettings), typeof(ConvolutionSettings)];
+    internal static int Kind(Settings settings) => Kind(settings.GetType());
+    internal static int Kind(Type type) => type switch
     {
-        ReverbSettings => 0x0001,
-        EaxReverbSettings => 0x8000,
-        ChorusSettings => 0x0002,
-        DistortionSettings => 0x0003,
-        EchoSettings => 0x0004,
-        FlangerSettings => 0x0005,
-        FrequencyShifterSettings => 0x0006,
-        VocalMorpherSettings => 0x0007,
-        PitchShifterSettings => 0x0008,
-        RingModulatorSettings => 0x0009,
-        AutowahSettings => 0x000A,
-        CompressorSettings => 0x000B,
-        EqualizerSettings => 0x000C,
-        _ => throw new NotSupportedException($"OpenAL does not implement {settings.GetType().Name}."),
+        var value when value == typeof(ReverbSettings) => 0x0001,
+        var value when value == typeof(EaxReverbSettings) => 0x8000,
+        var value when value == typeof(ChorusSettings) => 0x0002,
+        var value when value == typeof(DistortionSettings) => 0x0003,
+        var value when value == typeof(EchoSettings) => 0x0004,
+        var value when value == typeof(FlangerSettings) => 0x0005,
+        var value when value == typeof(FrequencyShifterSettings) => 0x0006,
+        var value when value == typeof(VocalMorpherSettings) => 0x0007,
+        var value when value == typeof(PitchShifterSettings) => 0x0008,
+        var value when value == typeof(RingModulatorSettings) => 0x0009,
+        var value when value == typeof(AutowahSettings) => 0x000A,
+        var value when value == typeof(CompressorSettings) => 0x000B,
+        var value when value == typeof(EqualizerSettings) => 0x000C,
+        var value when value == typeof(DedicatedDialogueSettings) => 0x9001,
+        var value when value == typeof(DedicatedLowFrequencySettings) => 0x9000,
+        var value when value == typeof(ConvolutionSettings) => 0xA000,
+        _ => throw new NotSupportedException($"OpenAL does not implement {type.Name}."),
     };
     internal static void Apply(Functions al, uint effect, Settings settings)
     {
@@ -42,6 +47,13 @@ internal static unsafe class SettingsBinding
         al.CheckAl("Set effect type");
         switch (settings)
         {
+            case DedicatedDialogueSettings value: al.alEffectf(effect, 1, value.Gain); break;
+            case DedicatedLowFrequencySettings value: al.alEffectf(effect, 1, value.Gain); break;
+            case ConvolutionSettings value:
+            {
+                float* orientation = stackalloc float[6] { value.Forward.X, value.Forward.Y, value.Forward.Z, value.Up.X, value.Up.Y, value.Up.Z };
+                al.alEffectfv(effect, 0x100F, orientation); break;
+            }
             case ReverbSettings value:
             {
                 al.alEffectf(effect, 0x0001, value.Density);

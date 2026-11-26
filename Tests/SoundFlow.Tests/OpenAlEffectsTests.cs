@@ -23,7 +23,7 @@ public sealed class OpenAlEffectsTests
         using var engine = new SoundFlow.Backends.OpenAL.Engine();
         using var device = engine.CreateRenderDevice(OpenAlPlaybackTests.Stereo);
         Assert.True(device.TryGetFeature<IEffects>(out var effects));
-        Assert.Equal(13, effects.SupportedEffects.Count);
+        Assert.All(Defaults, setting => Assert.Contains(setting.GetType(), effects.SupportedEffects));
         using var source = device.CreateSource(new SoundFlow.Playback.Clip(Enumerable.Range(0, 16000).Select(i => .2f * MathF.Sin(i * .1f)).ToArray(), TransportTests.Mono));
         Assert.True(source.TryGetFeature<IEffectSends>(out var sends));
         source.Play();

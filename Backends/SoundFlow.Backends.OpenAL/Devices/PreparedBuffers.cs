@@ -64,7 +64,7 @@ internal sealed unsafe partial class Context : IPreparedClips
     {
         if (_idleSources.TryPop(out var existing)) { ReusedSources++; return existing; }
         uint source; Al.alGenSources(1, &source); Al.CheckAl("Allocate prepared source"); SourceAllocations++;
-        Label(0x1000, source, "SoundFlow prepared source");
+        Label(0x19D0, source, "SoundFlow prepared source");
         return source;
     }
     internal void ReturnPreparedSource(uint source)
@@ -82,8 +82,9 @@ internal sealed unsafe partial class Context : IPreparedClips
     }
 
     /// <summary>One retained upload reference. Sources take an additional reference before this handle can be released.</summary>
-    private sealed class PreparedHandle(Context context, PreparedBuffer entry) : PreparedClip
+    internal sealed class PreparedHandle(Context context, PreparedBuffer entry) : PreparedClip
     {
+        internal PreparedBuffer Entry => entry;
         private bool _released;
         public override SoundFlow.Devices.PlaybackDevice Device => context.Owner;
         public override Clip Clip => entry.Clip;

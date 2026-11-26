@@ -13,6 +13,7 @@ internal sealed unsafe class Slot : CoreSlot
     internal readonly Context Owner;
     internal uint Id;
     private uint _effect;
+    private Devices.Context.PreparedHandle? _response;
     private Settings _settings;
     private Slot? _target;
     private float _gain = 1;
@@ -55,13 +56,34 @@ internal sealed unsafe class Slot : CoreSlot
         if (!Owner.SupportedEffects.Contains(settings.GetType())) throw new NotSupportedException("This effect is unavailable on the current device.");
         var al = Owner.Al;
         uint effect; al.alGenEffects(1, &effect); al.CheckAl("Allocate effect snapshot");
+        Devices.Context.PreparedHandle? response = null;
         try
         {
             SettingsBinding.Apply(al, effect, settings);
-            al.alAuxiliaryEffectSloti(Id, 1, (int)effect);
-            al.CheckAl("Attach effect snapshot to slot");
+            if (settings is ConvolutionSettings convolution)
+                response = (Devices.Context.PreparedHandle)Owner.Prepare(convolution.ImpulseResponse);
+            var snapshotEffect = effect;
+            Owner.ApplyNativeUpdates(() =>
+            {
+                try
+                {
+                    if (Owner.HasExtension("AL_SOFTX_convolution_effect"))
+                        al.alAuxiliaryEffectSloti(Id, 0x1009, (int)(response?.Entry.Id ?? 0));
+                    al.alAuxiliaryEffectSloti(Id, 1, (int)snapshotEffect);
+                    al.CheckAl("Attach effect and response snapshot to slot");
+                }
+                catch
+                {
+                    if (Owner.HasExtension("AL_SOFTX_convolution_effect"))
+                        al.alAuxiliaryEffectSloti(Id, 0x1009, (int)(_response?.Entry.Id ?? 0));
+                    al.alAuxiliaryEffectSloti(Id, 1, (int)_effect);
+                    al.alGetError(); // Preserve the original exception; endpoint loss can also make rollback fail.
+                    throw;
+                }
+            });
         }
-        catch { al.alDeleteEffects(1, &effect); throw; }
+        catch { response?.Dispose(); al.alDeleteEffects(1, &effect); throw; }
+        _response?.Dispose(); _response = response;
         if (_effect != 0) { var old = _effect; al.alDeleteEffects(1, &old); }
         _effect = effect; _settings = settings;
     }
@@ -93,6 +115,7 @@ internal sealed unsafe class Slot : CoreSlot
             var id = Id; Owner.Al.alDeleteAuxiliaryEffectSlots(1, &id);
             var effect = _effect; Owner.Al.alDeleteEffects(1, &effect);
             Owner.Al.CheckAl("Release effect slot");
+            _response?.Dispose(); _response = null;
             _disposed = true;
             Owner.Slots.Remove(this);
         });

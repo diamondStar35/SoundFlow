@@ -23,11 +23,12 @@ internal sealed unsafe partial class Context : IEffects
         Al.alGenEffects(1, &effect); Al.CheckAl("Probe effect support");
         try
         {
-            int[] kinds = [1, 0x8000, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-            for (var i = 0; i < SettingsBinding.Types.Length; i++)
+            foreach (var type in SettingsBinding.Types)
             {
-                Al.alEffecti(effect, 0x8001, kinds[i]);
-                if (Al.alGetError() == 0) supported.Add(SettingsBinding.Types[i]);
+                if (type == typeof(ConvolutionSettings) && !HasExtension("AL_SOFTX_convolution_effect")) continue;
+                if ((type == typeof(DedicatedDialogueSettings) || type == typeof(DedicatedLowFrequencySettings)) && !HasExtension("ALC_EXT_DEDICATED")) continue;
+                Al.alEffecti(effect, 0x8001, SettingsBinding.Kind(type));
+                if (Al.alGetError() == 0) supported.Add(type);
             }
         }
         finally { Al.alDeleteEffects(1, &effect); }
