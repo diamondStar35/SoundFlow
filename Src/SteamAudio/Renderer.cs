@@ -147,6 +147,9 @@ public sealed class Renderer : IDisposable
 
     /// <summary>Creates a direct processor for a custom render chain; place it before the binaural processor.</summary>
     public DirectProcessor CreateDirectProcessor(AudioFormat format, Spatialization spatialization) => new(this, format, spatialization);
+    /// <summary>Creates a direct stage applying only the selected components, sharing the chain's spatial snapshot.</summary>
+    public DirectProcessor CreateDirectProcessor(AudioFormat format, Spatialization spatialization, DirectEffects effects)
+        => new(this, format, spatialization, effects);
     /// <summary>Creates independent headphone rendering for one voice. Add to the render stage, not decode-ahead processing.</summary>
     public BinauralProcessor CreateBinauralProcessor(AudioFormat format, Spatialization spatialization) => new(this, format, spatialization);
     /// <summary>Creates positional mono-to-speaker panning using an immutable layout.</summary>

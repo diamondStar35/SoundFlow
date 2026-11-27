@@ -109,6 +109,22 @@ the side component. Widening can increase peaks; the processor does not clip the
 are rejected by surround source helpers, including later control updates. Custom chains add
 `CreateStereoProcessor` explicitly wherever shaping is required.
 
+Custom chains can select which direct components a stage applies:
+
+```csharp
+builder.Add(format => renderer.CreateDirectProcessor(format, controls, DirectEffects.Distance));
+var roomInput = builder.Capture("room");
+builder.Add(format => renderer.CreateDirectProcessor(format, controls,
+    DirectEffects.All & ~DirectEffects.Distance));
+builder.Add(format => renderer.CreateBinauralProcessor(format, controls));
+```
+
+This captures distance-attenuated sound before dry-path absorption, directivity, occlusion, and HRTF.
+Bind `roomInput` with `IProcessingSends` to feed native effects independently. Selected components
+are fixed when the processor is created; live settings continue to use the same spatial control object.
+The original factory overload applies `DirectEffects.All`. Transmission requires occlusion in its mask.
+Latency compensation remains `None` unless explicitly requested on a processor or send.
+
 ## Speakers and virtual surround
 
 Select `RenderingMode.Speakers` and a `SpeakerLayout` before creating sources:

@@ -11,11 +11,15 @@ public sealed unsafe class DirectProcessor : Processor
 {
     private readonly Native.Effects.Direct _effect = null!;
     private readonly nint _context;
-    internal DirectProcessor(Renderer renderer, AudioFormat format, Spatialization state)
+    private readonly DirectEffects _effects;
+    internal DirectProcessor(Renderer renderer, AudioFormat format, Spatialization state, DirectEffects effects = DirectEffects.All)
         : base(renderer, format, format, state)
     {
         try
         {
+            if ((effects & ~DirectEffects.All) != 0 || (effects.HasFlag(DirectEffects.Transmission) && !effects.HasFlag(DirectEffects.Occlusion)))
+                throw new ArgumentException("Select known direct effects; transmission requires occlusion.", nameof(effects));
+            _effects = effects;
             if (format.Ambisonics != null)
                 throw new ArgumentException("Apply direct-sound filtering before Ambisonics encoding.");
             _context = renderer.Context.DangerousGetHandle();
@@ -38,12 +42,12 @@ public sealed unsafe class DirectProcessor : Processor
         var parameters = new Native.Interop.DirectEffectParams
         {
             Flags = Native.Interop.DirectEffectFlags.ApplyDistanceAttenuation,
-            DistanceAttenuation = Spatialization.DistanceGain,
+            DistanceAttenuation = (_effects & DirectEffects.Distance) != 0 ? Spatialization.DistanceGain : 1,
             Directivity = settings.Directivity ?? 1,
             Occlusion = settings.Occlusion ?? 1,
             TransmissionType = Native.Interop.TransmissionType.FrequencyDependent
         };
-        if (!Warming && settings.AirAbsorption == null && settings.AirAbsorptionModel is { } airModel)
+        if ((_effects & DirectEffects.AirAbsorption) != 0 && !Warming && settings.AirAbsorption == null && settings.AirAbsorptionModel is { } airModel)
         {
             var model = new Native.Interop.AirAbsorptionModel();
             if (airModel.Coefficients is { } coefficients)
@@ -69,7 +73,7 @@ public sealed unsafe class DirectProcessor : Processor
             }
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyAirAbsorption;
         }
-        if (!Warming && settings.Directivity == null && settings.DirectivityModel is { } pattern)
+        if ((_effects & DirectEffects.Directivity) != 0 && !Warming && settings.Directivity == null && settings.DirectivityModel is { } pattern)
         {
             var model = new Native.Interop.Directivity { DipoleWeight = pattern.DipoleWeight, DipolePower = pattern.DipolePower };
             var source = Spatialization.SourceCoordinates;
@@ -84,18 +88,18 @@ public sealed unsafe class DirectProcessor : Processor
                     }, &model);
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyDirectivity;
         }
-        if (settings.Directivity.HasValue)
+        if ((_effects & DirectEffects.Directivity) != 0 && settings.Directivity.HasValue)
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyDirectivity;
-        if (settings.Occlusion.HasValue)
+        if ((_effects & DirectEffects.Occlusion) != 0 && settings.Occlusion.HasValue)
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyOcclusion;
-        if (settings.AirAbsorption is { } air)
+        if ((_effects & DirectEffects.AirAbsorption) != 0 && settings.AirAbsorption is { } air)
         {
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyAirAbsorption;
             parameters.AirAbsorption[0] = air.Low;
             parameters.AirAbsorption[1] = air.Mid;
             parameters.AirAbsorption[2] = air.High;
         }
-        if (settings.Transmission is { } transmission)
+        if ((_effects & DirectEffects.Transmission) != 0 && settings.Transmission is { } transmission)
         {
             parameters.Flags |= Native.Interop.DirectEffectFlags.ApplyTransmission;
             parameters.Transmission[0] = transmission.Low;

@@ -12,6 +12,23 @@ namespace SoundFlow.Tests;
 public sealed class SteamAudioEffectsTests
 {
     [Fact]
+    public void DistanceCaptureCanExcludeDryAirAbsorption()
+    {
+        using var renderer = new Renderer();
+        var state = new Spatialization(new()
+        {
+            Distance = new() { Model = AttenuationModel.None },
+            AirAbsorption = new Bands(.1f, .1f, .1f)
+        });
+        using var distance = renderer.CreateDirectProcessor(Mono, state, DirectEffects.Distance);
+        var input = Signal(1);
+        var output = new float[input.Length];
+        distance.Process(input, output, 256);
+        for (var i = 0; i < input.Length; i++)
+            Assert.Equal(input[i], output[i], 6);
+    }
+
+    [Fact]
     public void SpeakerDevicesRejectAmbisonicsOutputMetadata()
     {
         using var engine = new SoundFlow.Backends.OpenAL.Engine();
