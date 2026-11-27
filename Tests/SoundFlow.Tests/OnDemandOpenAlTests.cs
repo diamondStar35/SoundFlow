@@ -12,6 +12,27 @@ namespace SoundFlow.Tests;
 public sealed class OnDemandOpenAlTests
 {
     [Fact]
+    public void PausedCallbackDoesNotAdvanceTheSharedTimeline()
+    {
+        using var engine = new SoundFlow.Backends.OpenAL.Engine();
+        using var device = engine.CreateRenderDevice(OpenAlPlaybackTests.Stereo);
+        using var source = device.CreateSource(new Clip(Enumerable.Repeat(.2f, 48000).ToArray(), TransportTests.Mono),
+            new SourceOptions { RenderProcessing = new Builder().Add(format => new Stereo(format)).Build() });
+        var output = new float[2048];
+        source.Play();
+        device.Render(output);
+        source.Pause();
+        var time = source.Time;
+        device.Render(output);
+        Assert.Equal(time, source.Time);
+        Assert.Equal(PlaybackState.Paused, source.State);
+        source.Play();
+        device.Render(output);
+        Assert.True(source.Time > time);
+        Assert.Contains(output, sample => Math.Abs(sample) > .01f);
+    }
+
+    [Fact]
     public void MonoRenderChainsRemainAudibleOnStereoOutputs()
     {
         using var engine = new SoundFlow.Backends.OpenAL.Engine();

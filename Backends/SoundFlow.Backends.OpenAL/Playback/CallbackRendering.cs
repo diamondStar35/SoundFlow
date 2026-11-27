@@ -133,6 +133,9 @@ internal sealed unsafe partial class Voice
                 using var processing = Devices.ProcessingScope.Enter();
                 var session = endpoint.Voice._render;
                 if (session == null) return 0;
+                // The native mixer can request a final fade block after pausing. Supply silence without
+                // advancing the shared timeline or treating the paused stream as permanent EOF.
+                if (endpoint.Voice._state == PlaybackState.Paused) return bytes;
                 var written = 0;
                 while (written < output.Length)
                 {
