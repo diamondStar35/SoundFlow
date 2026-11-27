@@ -2,6 +2,12 @@
 
 A processing chain describes the audio between a source's transport and its backend. Each processor declares its input and output formats. Interleaved F32 and sample rate stay constant within the chain; channel count can change. A mono-to-stereo spatializer therefore receives mono frames and produces stereo frames without changing seek or loop units.
 
+For controls that must respond after decode-ahead, assign a separate `SourceOptions.RenderProcessing`
+chain. It runs only when the endpoint requests audio. `RenderBlockFrames` defaults to 256, and fixed
+processors declare matching `RequiredBlockFrames`. Native callbacks require bounded preallocated DSP;
+provider I/O and ordinary processing stay on shared workers. See [Steam Audio](SteamAudio.md) for the
+on-demand path, captured native sends, diagnostics, and complete lifecycle requirements.
+
 `Source.Format` describes the original provider. `Source.RenderedFormat` describes the PCM delivered to the native endpoint or software mixer. `AudioBufferProcessed` reports the actual rendered format and runs on the producer, outside the physical audio callback. Its span is borrowed for that synchronous handler only. Do not issue playback controls or dispose resources from a processor or PCM handler.
 
 ## Definitions, instances and ownership

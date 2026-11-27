@@ -18,6 +18,7 @@ Reference a backend explicitly. Construct `SoundFlow.Backends.OpenAL.Engine` or 
 - [Architecture, ownership and processing stages](Docs/Architecture.md)
 - [OpenAL Soft features and runnable examples](Docs/Backends/OpenAL.md)
 - [MiniAudio backend](Docs/Backends/MiniAudio.md)
+- [Optional Steam Audio integration and render-time headphone spatialization](Docs/SteamAudio.md)
 - [Writing an independent backend](Docs/BackendAuthoring.md)
 - [Migrating renamed interfaces](Docs/Migration.md)
 
@@ -32,6 +33,13 @@ dotnet run --project Samples/SoundFlow.Samples.OpenAL -- --scheduled-offline ren
 ```
 
 These commands consume precompiled libraries. OpenAL native compilation is restricted to its GitHub workflow; the helper rejects local invocation. The sample's other commands explicitly access physical devices and are unsuitable for unattended tests.
+
+Steam Audio is enabled explicitly with `EnableSteamAudio=true` after initializing `Modules/SteamAudio.NET`.
+It uses decoded-input buffering and render-time DSP through MiniAudio or OpenAL callback buffers, with
+  256-frame processing by default. It includes distance and air absorption, oriented directivity, headphone
+  blending, speaker panning, stereo pan/width, virtual surround, and explicitly tagged Ambisonics through
+  third order. See the integration guide for examples, static NativeAOT publishing, and EAX routing.
+  Ordinary builds do not require the module.
 
 Retained targets are Windows x64/ARM64, Linux x64/ARM64, macOS x64/ARM64, iOS ARM64 and Android ARM64. Only the supplied Windows x64 OpenAL runtime is present locally. Other native artifacts require workflow generation and validation before distribution is complete. MIDI backend files deleted by this fork remain deleted.
 
