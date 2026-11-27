@@ -1,4 +1,4 @@
-"""Verify the OpenAL runtime matrix and native CPU architectures without executing foreign binaries."""
+"""Verify runtime matrices and native CPU architectures without executing foreign binaries."""
 import argparse
 import json
 from pathlib import Path
@@ -35,13 +35,26 @@ def pe_imports(data):
     return names
 
 
-def verify(root, rids):
+def verify(root, rids, backend="openal"):
     for rid in rids:
-        name = "soft_oal.dll" if rid.startswith("win-") else "libopenal.dylib" if rid.startswith("osx-") else "soft_oal.framework/soft_oal" if rid.startswith("ios-") else "libopenal.so"
+        if backend == "ffmpeg":
+            name = "soundflow-ffmpeg.dll" if rid.startswith("win-") else "libsoundflow-ffmpeg.dylib" if rid.startswith("osx-") else "soundflow-ffmpeg.framework/soundflow-ffmpeg" if rid.startswith("ios-") else "libsoundflow-ffmpeg.so"
+        else:
+            name = "soft_oal.dll" if rid.startswith("win-") else "libopenal.dylib" if rid.startswith("osx-") else "soft_oal.framework/soft_oal" if rid.startswith("ios-") else "libopenal.so"
         path = root / rid / "native" / name
         if not path.is_file():
             raise ValueError(f"Missing native artifact: {path}")
         data = path.read_bytes()
+        if backend == "ffmpeg":
+            profile = root / rid / "native" / "ffmpeg" / "profile.json"
+            assert json.loads(profile.read_text()) == json.loads((ROOT / "Packaging/FFmpeg.json").read_text()), f"Mismatched build profile: {rid}"
+            for export in (b"sf_decoder_init_url", b"sf_encoder_init_ex", b"sf_feature_name"):
+                assert export in data, f"Missing native API {export!r}: {path}"
+            notices = profile.parent / "notices"
+            required = ["FFmpeg-LGPL-3.0.txt", "FFmpeg-GPL-3.0.txt", "LAME.txt", "Ogg.txt", "Vorbis.txt", "Opus.txt"]
+            if rid.startswith(("linux-", "android-")):
+                required.append("OpenSSL.txt")
+            assert all((notices / name).is_file() for name in required), f"Missing dependency notices: {rid}"
         if rid.startswith("win-"):
             pe = struct.unpack_from("<I", data, 0x3C)[0]
             machine = struct.unpack_from("<H", data, pe + 4)[0]
@@ -66,6 +79,7 @@ def verify(root, rids):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--backend", choices=("openal", "ffmpeg"), default="openal")
     parser.add_argument("--rid", choices=RIDS, action="append")
     args = parser.parse_args()
-    verify(args.root, args.rid or RIDS)
+    verify(args.root, args.rid or RIDS, args.backend)

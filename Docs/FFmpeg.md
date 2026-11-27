@@ -99,6 +99,7 @@ the installed native runtime. Foreign binaries are compiled but are not executed
 ```powershell
 dotnet test Tests/SoundFlow.Tests/SoundFlow.Tests.csproj -c Release -p:EnableSteamAudio=true -m:1
 python Scripts/verify-ffmpeg.py --library Codecs/SoundFlow.Codecs.FFMpeg/runtimes/win-x64/native/soundflow-ffmpeg.dll
+python Scripts/verify-native-artifacts.py Codecs/SoundFlow.Codecs.FFMpeg/runtimes --backend ffmpeg
 dotnet publish Tests/CodecAot/CodecAot.csproj -c Release -r win-x64 -o artifacts/codec-aot
 ./artifacts/codec-aot/CodecAot.exe
 ```

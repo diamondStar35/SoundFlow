@@ -457,6 +457,7 @@ jobs:
       - build-android
       - build-ios
     steps:
+      - uses: actions/checkout@v4
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -485,8 +486,7 @@ jobs:
           done
       - name: Verify final runtimes structure
         run: |
-          echo "Final structure of the 'runtimes' directory:"
-          ls -R runtimes
+          python3 Scripts/verify-native-artifacts.py runtimes --backend ffmpeg
       - name: Create zip archive
         run: zip -r soundflow-ffmpeg-runtimes.zip runtimes
 
