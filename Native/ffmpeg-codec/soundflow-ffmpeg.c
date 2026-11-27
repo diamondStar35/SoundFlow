@@ -6,6 +6,7 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/audio_fifo.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/time.h>
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,7 @@ struct SF_Decoder {
     AVIOContext* avio_ctx;
     uint8_t* io_buffer;
     sf_read_callback onRead;
+    sf_interrupt_callback interrupt;
     sf_seek_callback onSeek;
     void* pUserData;
     SFSampleFormat target_format;
@@ -44,6 +46,7 @@ struct SF_Encoder {
     uint8_t* io_buffer;
     AVAudioFifo* fifo;
     sf_write_callback onWrite;
+    sf_seek_callback onSeek;
     void* pUserData;
     int64_t next_pts;
     SFSampleFormat input_format;
@@ -116,12 +119,11 @@ static void sf_decoder_reset_state(SF_Decoder* decoder) {
 
     avcodec_free_context(&decoder->codec_ctx);
 
-    if (decoder->format_ctx) {
-        if (decoder->format_ctx->pb) {
-            av_freep(&decoder->format_ctx->pb->buffer);
-            avio_context_free(&decoder->format_ctx->pb);
-        }
-        avformat_close_input(&decoder->format_ctx);
+    avformat_close_input(&decoder->format_ctx);
+    // Custom AVIO belongs to this wrapper. URL AVIO belongs to avformat_close_input.
+    if (decoder->avio_ctx) {
+        av_freep(&decoder->avio_ctx->buffer);
+        avio_context_free(&decoder->avio_ctx);
     }
 
     av_packet_free(&decoder->packet);
@@ -138,11 +140,16 @@ static void sf_decoder_reset_state(SF_Decoder* decoder) {
     decoder->target_channels = 0;
 }
 
+static int decoder_interrupt(void* opaque) {
+    SF_Decoder* decoder = (SF_Decoder*)opaque;
+    return decoder->interrupt ? decoder->interrupt(decoder->pUserData) : 0;
+}
+
 static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
                                        SFSampleFormat target_format,
                                        SFSampleFormat* out_native_format,
                                        uint32_t* out_channels,
-                                       uint32_t* out_samplerate) {
+                                       uint32_t* out_samplerate, const char* url, const SF_NetworkOptions* network) {
     if (!decoder) {
         return SF_RESULT_ERROR_INVALID_ARGS;
     }
@@ -151,30 +158,41 @@ static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
 
     decoder->format_ctx = avformat_alloc_context();
     if (!decoder->format_ctx) return SF_RESULT_ERROR_ALLOCATION_FAILED;
-    decoder->io_buffer = (uint8_t*)av_malloc(IO_BUFFER_SIZE);
-    if (!decoder->io_buffer) {
-        avformat_free_context(decoder->format_ctx);
-        decoder->format_ctx = NULL;
-        return SF_RESULT_ERROR_ALLOCATION_FAILED;
-    }
-
-    decoder->avio_ctx = avio_alloc_context(decoder->io_buffer, IO_BUFFER_SIZE, 0, decoder, read_packet_callback, NULL, seek_callback_wrapper);
-    if (!decoder->avio_ctx) {
-        av_free(decoder->io_buffer);
-        decoder->io_buffer = NULL;
-        avformat_free_context(decoder->format_ctx);
-        decoder->format_ctx = NULL;
-        return SF_RESULT_ERROR_ALLOCATION_FAILED;
-    }
-    decoder->format_ctx->pb = decoder->avio_ctx;
-
     AVDictionary* options = NULL;
-    av_dict_set(&options, "scan_all_pmts", "0", 0);
-    av_dict_set(&options, "probesize", "5000000", 0);
-    av_dict_set(&options, "analyzeduration", "10000000", 0);
-
-    if (avformat_open_input(&decoder->format_ctx, NULL, NULL, &options) != 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
-    if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0) return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
+    if (url) {
+        decoder->format_ctx->interrupt_callback.callback = decoder_interrupt;
+        decoder->format_ctx->interrupt_callback.opaque = decoder;
+        av_dict_set(&options, "protocol_whitelist", "http,https,httpproxy,tcp,tls,udp,udplite,rtp,rtmp,rtmps,crypto,data", 0);
+        av_dict_set_int(&options, "rw_timeout", network->timeout_us, 0);
+        av_dict_set_int(&options, "timeout", network->timeout_us, 0);
+        av_dict_set_int(&options, "probesize", network->probe_bytes, 0);
+        av_dict_set_int(&options, "analyzeduration", network->analyze_us, 0);
+        av_dict_set(&options, "tls_verify", "1", 0);
+        if (network->user_agent) av_dict_set(&options, "user_agent", network->user_agent, 0);
+        if (network->headers) av_dict_set(&options, "headers", network->headers, 0);
+        if (network->ca_file) av_dict_set(&options, "ca_file", network->ca_file, 0);
+        if (network->rtsp_transport) av_dict_set(&options, "rtsp_transport", network->rtsp_transport, 0);
+    } else {
+        decoder->io_buffer = (uint8_t*)av_malloc(IO_BUFFER_SIZE);
+        if (!decoder->io_buffer) return SF_RESULT_ERROR_ALLOCATION_FAILED;
+        decoder->avio_ctx = avio_alloc_context(decoder->io_buffer, IO_BUFFER_SIZE, 0, decoder,
+            read_packet_callback, NULL, decoder->onSeek ? seek_callback_wrapper : NULL);
+        if (!decoder->avio_ctx) {
+            av_freep(&decoder->io_buffer);
+            return SF_RESULT_ERROR_ALLOCATION_FAILED;
+        }
+        decoder->format_ctx->pb = decoder->avio_ctx;
+        decoder->format_ctx->flags |= AVFMT_FLAG_CUSTOM_IO;
+    }
+    int result = avformat_open_input(&decoder->format_ctx, url, NULL, &options);
+    av_dict_free(&options);
+    if (result < 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;
+    for (unsigned int i = 0; i < decoder->format_ctx->nb_streams; ++i) {
+        if (decoder->format_ctx->streams[i]->codecpar->codec_type != AVMEDIA_TYPE_AUDIO)
+            decoder->format_ctx->streams[i]->discard = AVDISCARD_ALL;
+    }
+    if (avformat_find_stream_info(decoder->format_ctx, NULL) < 0)
+        return SF_RESULT_DECODER_ERROR_FIND_STREAM_INFO;
 
     decoder->stream_index = av_find_best_stream(decoder->format_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
     if (decoder->stream_index < 0) return SF_RESULT_DECODER_ERROR_NO_AUDIO_STREAM;
@@ -235,7 +253,7 @@ static SF_Result sf_decoder_reopen_from_start(SF_Decoder* decoder) {
         return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    return sf_decoder_open_input(decoder, decoder->target_format, NULL, NULL, NULL);
+    return sf_decoder_open_input(decoder, decoder->target_format, NULL, NULL, NULL, NULL, NULL);
 }
 
 //  Decoder Implementation
@@ -256,7 +274,19 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->onSeek = onSeek;
     decoder->pUserData = pUserData;
     decoder->stream_index = -1;
-    return sf_decoder_open_input(decoder, target_format, out_native_format, out_channels, out_samplerate);
+    return sf_decoder_open_input(decoder, target_format, out_native_format, out_channels, out_samplerate, NULL, NULL);
+}
+
+SF_FFMPEG_API SF_Result sf_decoder_init_url(SF_Decoder* decoder, const char* url,
+    const SF_NetworkOptions* options, sf_interrupt_callback interrupt, void* user_data,
+    SFSampleFormat target_format, SFSampleFormat* native_format, uint32_t* channels, uint32_t* sample_rate) {
+    if (!decoder || !url || !options || options->timeout_us <= 0 || options->probe_bytes < 2048)
+        return SF_RESULT_ERROR_INVALID_ARGS;
+    av_log_set_level(AV_LOG_ERROR);
+    decoder->interrupt = interrupt;
+    decoder->pUserData = user_data;
+    decoder->stream_index = -1;
+    return sf_decoder_open_input(decoder, target_format, native_format, channels, sample_rate, url, options);
 }
 
 SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
@@ -267,7 +297,7 @@ SF_FFMPEG_API int64_t sf_decoder_get_length_in_pcm_frames(SF_Decoder* decoder) {
     }
     // Fallback for formats without duration info (e.g. WAV)
     if (decoder->format_ctx->duration != AV_NOPTS_VALUE) {
-        return av_rescale(decoder->format_ctx->duration, AV_TIME_BASE, stream->codecpar->sample_rate);
+        return av_rescale(decoder->format_ctx->duration, stream->codecpar->sample_rate, AV_TIME_BASE);
     }
     return 0;
 }
@@ -343,15 +373,8 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             break;
         }
         else if (ret != AVERROR(EAGAIN)) {
-            // The decoder produced an error that isn't EOF and isn't "needs more input".
-            // Historically we propagated this as SF_RESULT_DECODER_ERROR_DECODING_FAILED,
-            // but for live/looped playback that turns a transient codec hiccup near
-            // the end of the stream into an unrecoverable crash for the caller.
-            // Surface it as a graceful end-of-stream instead so the caller can
-            // seek/reopen on its own terms; genuinely broken streams are still
-            // visible via FFmpeg's AV_LOG_ERROR output.
             av_frame_unref(decoder->frame);
-            break;
+            return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
         }
 
         // If we need more input data (ret == AVERROR(EAGAIN))
@@ -369,11 +392,7 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
                 int send_ret = avcodec_send_packet(decoder->codec_ctx, decoder->packet);
                 av_packet_unref(decoder->packet);
                 if (send_ret < 0 && send_ret != AVERROR(EAGAIN)) {
-                    // Codec rejected the packet outright. Treat as graceful EOS for
-                    // the same reason as above: the caller (e.g. a looping radio
-                    // source) can recover by re-seeking; there's no value in
-                    // tearing down the whole call site over a single bad packet.
-                    break;
+                    return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
                 }
             } else {
                 av_packet_unref(decoder->packet);
@@ -385,11 +404,11 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
             draining = 1;
         }
         else {
-            // The demuxer reported a non-EOF error. This is most often a quirk in
-            // the file's tail (FLAC/Vorbis containers in particular can trip the
-            // demuxer right after the last audio packet) and is not actionable for
-            // the caller. Stop cleanly so a Seek(0)+retry can recover.
-            break;
+            if (read_ret == AVERROR(EAGAIN) && !decoder_interrupt(decoder)) {
+                av_usleep(1000);
+                continue;
+            }
+            return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
         }
     }
 
@@ -472,7 +491,18 @@ static int encode_and_write(SF_Encoder* encoder, AVFrame* frame) {
     return 0;
 }
 
-SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_name, sf_write_callback onWrite, void* pUserData, SFSampleFormat sampleFormat, uint32_t channels, uint32_t sampleRate) {
+SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_name, sf_write_callback onWrite,
+    void* user_data, SFSampleFormat sample_format, uint32_t channels, uint32_t sample_rate) {
+    return sf_encoder_init_ex(encoder, format_name, onWrite, NULL, user_data, sample_format, channels, sample_rate);
+}
+
+static int64_t encoder_seek(void* opaque, int64_t offset, int whence) {
+    SF_Encoder* encoder = (SF_Encoder*)opaque;
+    return encoder->onSeek(encoder->pUserData, offset, whence);
+}
+
+SF_FFMPEG_API SF_Result sf_encoder_init_ex(SF_Encoder* encoder, const char* format_name, sf_write_callback onWrite,
+    sf_seek_callback onSeek, void* pUserData, SFSampleFormat sampleFormat, uint32_t channels, uint32_t sampleRate) {
     if (!encoder) return SF_RESULT_ERROR_INVALID_ARGS;
     if (channels == 0 || sampleRate == 0) return SF_RESULT_ERROR_INVALID_ARGS;
 
@@ -480,18 +510,24 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     av_log_set_level(AV_LOG_ERROR);
 
     encoder->onWrite = onWrite;
+    encoder->onSeek = onSeek;
     encoder->pUserData = pUserData;
     encoder->next_pts = 0;
     encoder->input_format = sampleFormat;
     encoder->input_sample_rate = sampleRate;
 
-    const AVOutputFormat* out_fmt = av_guess_format(format_name, NULL, NULL);
+    const char* muxer = !strcmp(format_name, "aac") ? "adts" :
+        (!strcmp(format_name, "alac") || !strcmp(format_name, "m4a")) ? "ipod" : format_name;
+    const AVOutputFormat* out_fmt = av_guess_format(muxer, NULL, NULL);
     if (!out_fmt) return SF_RESULT_ENCODER_ERROR_FORMAT_NOT_FOUND;
 
     avformat_alloc_output_context2(&encoder->format_ctx, out_fmt, NULL, NULL);
     if (!encoder->format_ctx) return SF_RESULT_ENCODER_ERROR_FORMAT_NOT_FOUND;
 
-    const AVCodec* codec = avcodec_find_encoder(out_fmt->audio_codec);
+    const AVCodec* codec = !strcmp(format_name, "opus") ? avcodec_find_encoder_by_name("libopus") :
+        !strcmp(format_name, "ogg") ? avcodec_find_encoder_by_name("libvorbis") :
+        !strcmp(format_name, "alac") ? avcodec_find_encoder_by_name("alac") :
+        avcodec_find_encoder(out_fmt->audio_codec);
     if (!codec) return SF_RESULT_ENCODER_ERROR_CODEC_NOT_FOUND;
 
     encoder->stream = avformat_new_stream(encoder->format_ctx, codec);
@@ -512,7 +548,13 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     av_channel_layout_uninit(&ch_layout);
 
     encoder->codec_ctx->sample_rate = sampleRate;
-    encoder->codec_ctx->time_base = (AVRational){1, sampleRate};
+    if (codec->supported_samplerates) {
+        int selected = codec->supported_samplerates[0];
+        for (const int* rate = codec->supported_samplerates; *rate; ++rate)
+            if (abs(*rate - (int)sampleRate) < abs(selected - (int)sampleRate)) selected = *rate;
+        encoder->codec_ctx->sample_rate = selected;
+    }
+    encoder->codec_ctx->time_base = (AVRational){1, encoder->codec_ctx->sample_rate};
 
     // Suppress deprecation warnings for sample_fmts for compatibility.
 #if defined(__GNUC__) || defined(__clang__)
@@ -540,10 +582,15 @@ SF_FFMPEG_API SF_Result sf_encoder_init(SF_Encoder* encoder, const char* format_
     if (avcodec_parameters_from_context(encoder->stream->codecpar, encoder->codec_ctx) < 0) return SF_RESULT_ENCODER_ERROR_CONTEXT_PARAMS;
 
     encoder->io_buffer = (uint8_t*)av_malloc(IO_BUFFER_SIZE);
-    encoder->avio_ctx = avio_alloc_context(encoder->io_buffer, IO_BUFFER_SIZE, 1, encoder, NULL, write_packet_callback, NULL);
+    encoder->avio_ctx = avio_alloc_context(encoder->io_buffer, IO_BUFFER_SIZE, 1, encoder, NULL, write_packet_callback, onSeek ? encoder_seek : NULL);
     encoder->format_ctx->pb = encoder->avio_ctx;
 
-    if (avformat_write_header(encoder->format_ctx, NULL) < 0) return SF_RESULT_ENCODER_ERROR_WRITE_HEADER;
+    AVDictionary* mux_options = NULL;
+    if (!onSeek && !strcmp(muxer, "ipod"))
+        av_dict_set(&mux_options, "movflags", "frag_keyframe+empty_moov+default_base_moof", 0);
+    int header_result = avformat_write_header(encoder->format_ctx, &mux_options);
+    av_dict_free(&mux_options);
+    if (header_result < 0) return SF_RESULT_ENCODER_ERROR_WRITE_HEADER;
 
     // Setup resampler to convert from the provided input format to the encoder's required format
     enum AVSampleFormat input_av_format = to_ffmpeg_sample_format(sampleFormat);
@@ -759,4 +806,38 @@ SF_FFMPEG_API const char* sf_result_to_string(SF_Result result) {
         case SF_RESULT_ENCODER_ERROR_WRITE_FAILED: return "An I/O error occurred while writing the encoded data";
         default: return "Unknown error";
     }
+}
+
+// Introspection describes the linked library, so packaging can verify the actual runtime.
+SF_FFMPEG_API const char* sf_ffmpeg_version(void) { return av_version_info(); }
+
+SF_FFMPEG_API int sf_non_audio_codec_count(void) {
+    void* cursor = NULL;
+    const AVCodec* codec;
+    int count = 0;
+    while ((codec = av_codec_iterate(&cursor)))
+        if (codec->type != AVMEDIA_TYPE_AUDIO) ++count;
+    return count;
+}
+
+SF_FFMPEG_API const char* sf_feature_name(int category, int index) {
+    if (index < 0) return NULL;
+    void* cursor = NULL;
+    if (category == 0 || category == 1) {
+        const AVCodec* codec;
+        while ((codec = av_codec_iterate(&cursor))) {
+            if ((category == 0 ? av_codec_is_decoder(codec) : av_codec_is_encoder(codec)) && index-- == 0)
+                return codec->name;
+        }
+    } else if (category == 2) {
+        const AVInputFormat* format;
+        while ((format = av_demuxer_iterate(&cursor))) if (index-- == 0) return format->name;
+    } else if (category == 3) {
+        const AVOutputFormat* format;
+        while ((format = av_muxer_iterate(&cursor))) if (index-- == 0) return format->name;
+    } else if (category == 4 || category == 5) {
+        const char* name;
+        while ((name = avio_enum_protocols(&cursor, category == 5))) if (index-- == 0) return name;
+    }
+    return NULL;
 }

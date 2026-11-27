@@ -28,7 +28,7 @@ endfunction()
 # Platform / RID detection
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(TARGET_OS "win")
-    if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|AARCH64")
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "ARM64|AARCH64|arm64|aarch64")
         normalise_arch("${CMAKE_SYSTEM_PROCESSOR}" TARGET_ARCH)
     elseif(CMAKE_SIZEOF_VOID_P EQUAL 8)
         set(TARGET_ARCH "x64")
@@ -79,292 +79,52 @@ set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/runtimes/${RUNTIME_ID}/native")
 set(FFMPEG_INSTALL_DIR "${CMAKE_BINARY_DIR}/ffmpeg-install")
 set(LAME_INSTALL_DIR "${CMAKE_BINARY_DIR}/lame-install")
 
-# FFmpeg & LAME download parameters
-set(FFMPEG_VERSION "8.0")
-set(FFMPEG_URL "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz")
-set(LAME_URL "https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz")
-
+# The profile is an allowlist; no codecs, muxers or demuxers are enabled implicitly.
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../../Packaging/FFmpeg.json" AUDIO_PROFILE)
+string(JSON FFMPEG_VERSION GET "${AUDIO_PROFILE}" version)
+string(JSON FFMPEG_URL GET "${AUDIO_PROFILE}" source url)
+string(JSON FFMPEG_SHA256 GET "${AUDIO_PROFILE}" source sha256)
+string(JSON LAME_URL GET "${AUDIO_PROFILE}" dependencies lame url)
+string(JSON LAME_SHA256 GET "${AUDIO_PROFILE}" dependencies lame sha256)
+set(AUDIO_INSTALL_DIR "${CMAKE_BINARY_DIR}/audio-deps")
+set(LAME_INSTALL_DIR "${AUDIO_INSTALL_DIR}")
+set(AUDIO_RIDS win-x64 win-arm64 linux-x64 linux-arm64 osx-x64 osx-arm64 ios-arm64 android-arm64)
+if(NOT RUNTIME_ID IN_LIST AUDIO_RIDS)
+    message(FATAL_ERROR "Unsupported audio runtime: ${RUNTIME_ID}")
+endif()
 if(NOT CMAKE_BUILD_PARALLEL_LEVEL)
-    set(CMAKE_BUILD_PARALLEL_LEVEL 1)
+    set(CMAKE_BUILD_PARALLEL_LEVEL 2)
 endif()
-
-# Common LAME Configure Flags
-set(LAME_COMMON_FLAGS
-    --disable-shared
-    --enable-static
-    --with-pic
-    --disable-frontend
-    --disable-decoder
-)
-
-# Common FFmpeg Configure Flags
+set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
+set(LAME_COMMON_FLAGS --disable-shared --enable-static --with-pic --disable-frontend --disable-decoder)
 set(FFMPEG_COMMON_FLAGS
-        --disable-gpl
-        --disable-nonfree
-
-        # Build Type
-        --disable-shared
-        --enable-static
-        --enable-pic
-        --disable-symver
-        
-
-        # Library Linking (LAME Support)
-        --enable-libmp3lame
-        "--extra-cflags=-I${LAME_INSTALL_DIR}/include"
-        "--extra-ldflags=-L${LAME_INSTALL_DIR}/lib"
-
-        # General Disables
-        --disable-doc
-        --disable-debug
-        --disable-avdevice
-        --disable-swscale
-        --disable-programs
-        --disable-avfilter
-        --disable-network
-        --disable-zlib
-        --disable-lzma
-        --disable-bzlib
-        --disable-iconv
-        --disable-libxcb
-        --disable-bsfs
-        --disable-filters
-        --disable-parsers
-        --disable-indevs
-        --disable-outdevs
-        --disable-encoders
-        --disable-decoders
-        --disable-hwaccels
-        --disable-nvenc
-        --disable-videotoolbox
-        --disable-audiotoolbox
-
-        # Enabled Protocols
-        --disable-protocols
-        --enable-protocol=file
-        --enable-protocol=pipe
-
-        # Enabled Demuxers
-        --enable-demuxer=image2
-        --enable-demuxer=aac
-        --enable-demuxer=ac3
-        --enable-demuxer=aiff
-        --enable-demuxer=ape
-        --enable-demuxer=asf
-        --enable-demuxer=au
-        --enable-demuxer=avi
-        --enable-demuxer=flac
-        --enable-demuxer=flv
-        --enable-demuxer=matroska
-        --enable-demuxer=mov
-        --enable-demuxer=m4v
-        --enable-demuxer=mp3
-        --enable-demuxer=mpc
-        --enable-demuxer=mpc8
-        --enable-demuxer=ogg
-        --enable-demuxer=pcm_alaw
-        --enable-demuxer=pcm_mulaw
-        --enable-demuxer=pcm_f64be
-        --enable-demuxer=pcm_f64le
-        --enable-demuxer=pcm_f32be
-        --enable-demuxer=pcm_f32le
-        --enable-demuxer=pcm_s32be
-        --enable-demuxer=pcm_s32le
-        --enable-demuxer=pcm_s24be
-        --enable-demuxer=pcm_s24le
-        --enable-demuxer=pcm_s16be
-        --enable-demuxer=pcm_s16le
-        --enable-demuxer=pcm_s8
-        --enable-demuxer=pcm_u32be
-        --enable-demuxer=pcm_u32le
-        --enable-demuxer=pcm_u24be
-        --enable-demuxer=pcm_u24le
-        --enable-demuxer=pcm_u16be
-        --enable-demuxer=pcm_u16le
-        --enable-demuxer=pcm_u8
-        --enable-demuxer=rm
-        --enable-demuxer=shorten
-        --enable-demuxer=tak
-        --enable-demuxer=tta
-        --enable-demuxer=wav
-        --enable-demuxer=wv
-        --enable-demuxer=xwma
-        --enable-demuxer=dsf
-
-        # Enabled Decoders
-        --enable-decoder=aac
-        --enable-decoder=aac_latm
-        --enable-decoder=ac3
-        --enable-decoder=alac
-        --enable-decoder=als
-        --enable-decoder=ape
-        --enable-decoder=atrac1
-        --enable-decoder=atrac3
-        --enable-decoder=eac3
-        --enable-decoder=flac
-        --enable-decoder=gsm
-        --enable-decoder=gsm_ms
-        --enable-decoder=mp1
-        --enable-decoder=mp1float
-        --enable-decoder=mp2
-        --enable-decoder=mp2float
-        --enable-decoder=mp3
-        --enable-decoder=mp3adu
-        --enable-decoder=mp3adufloat
-        --enable-decoder=mp3float
-        --enable-decoder=mp3on4
-        --enable-decoder=mp3on4float
-        --enable-decoder=mpc7
-        --enable-decoder=mpc8
-        --enable-decoder=opus
-        --enable-decoder=ra_144
-        --enable-decoder=ra_288
-        --enable-decoder=ralf
-        --enable-decoder=shorten
-        --enable-decoder=tak
-        --enable-decoder=tta
-        --enable-decoder=vorbis
-        --enable-decoder=wavpack
-        --enable-decoder=wmalossless
-        --enable-decoder=wmapro
-        --enable-decoder=wmav1
-        --enable-decoder=wmav2
-        --enable-decoder=wmavoice
-        --enable-decoder=pcm_alaw
-        --enable-decoder=pcm_bluray
-        --enable-decoder=pcm_dvd
-        --enable-decoder=pcm_f32be
-        --enable-decoder=pcm_f32le
-        --enable-decoder=pcm_f64be
-        --enable-decoder=pcm_f64le
-        --enable-decoder=pcm_lxf
-        --enable-decoder=pcm_mulaw
-        --enable-decoder=pcm_s8
-        --enable-decoder=pcm_s8_planar
-        --enable-decoder=pcm_s16be
-        --enable-decoder=pcm_s16be_planar
-        --enable-decoder=pcm_s16le
-        --enable-decoder=pcm_s16le_planar
-        --enable-decoder=pcm_s24be
-        --enable-decoder=pcm_s24daud
-        --enable-decoder=pcm_s24le
-        --enable-decoder=pcm_s24le_planar
-        --enable-decoder=pcm_s32be
-        --enable-decoder=pcm_s32le
-        --enable-decoder=pcm_s32le_planar
-        --enable-decoder=pcm_u8
-        --enable-decoder=pcm_u16be
-        --enable-decoder=pcm_u16le
-        --enable-decoder=pcm_u24be
-        --enable-decoder=pcm_u24le
-        --enable-decoder=pcm_u32be
-        --enable-decoder=pcm_u32le
-        --enable-decoder=dsd_lsbf
-        --enable-decoder=dsd_msbf
-        --enable-decoder=dsd_lsbf_planar
-        --enable-decoder=dsd_msbf_planar
-
-        # Enabled Parsers
-        --enable-parser=aac
-        --enable-parser=aac_latm
-        --enable-parser=ac3
-        --enable-parser=cook
-        --enable-parser=dca
-        --enable-parser=flac
-        --enable-parser=gsm
-        --enable-parser=mpegaudio
-        --enable-parser=tak
-        --enable-parser=vorbis
-
-        # Enabled Muxers
-        --enable-muxer=ac3
-        --enable-muxer=adts
-        --enable-muxer=aiff
-        --enable-muxer=alaw
-        --enable-muxer=flac
-        --enable-muxer=ipod
-        --enable-muxer=matroska
-        --enable-muxer=mp2
-        --enable-muxer=mp3
-        --enable-muxer=mulaw
-        --enable-muxer=ogg
-        --enable-muxer=opus
-        --enable-muxer=pcm_f32le
-        --enable-muxer=pcm_f64le
-        --enable-muxer=pcm_s16be
-        --enable-muxer=pcm_s16le
-        --enable-muxer=pcm_s24be
-        --enable-muxer=pcm_s24le
-        --enable-muxer=pcm_s32be
-        --enable-muxer=pcm_s32le
-        --enable-muxer=pcm_s8
-        --enable-muxer=pcm_u8
-        --enable-muxer=tta
-        --enable-muxer=wav
-        --enable-muxer=wv
-
-        # Enabled Encoders
-        # Lossy and Lossless encoders
-        --enable-encoder=aac
-        --enable-encoder=ac3
-        --enable-encoder=alac
-        --enable-encoder=eac3
-        --enable-encoder=flac
-        --enable-encoder=mp2
-        --enable-encoder=libmp3lame
-        --enable-encoder=nellymoser
-        --enable-encoder=opus
-        --enable-encoder=sbc
-        --enable-encoder=sonic
-        --enable-encoder=tta
-        --enable-encoder=vorbis
-        --enable-encoder=wavpack
-        --enable-encoder=wmav1
-        --enable-encoder=wmav2
-
-        # PCM (Uncompressed) encoders
-        --enable-encoder=pcm_alaw
-        --enable-encoder=pcm_mulaw
-        --enable-encoder=pcm_f32be
-        --enable-encoder=pcm_f32le
-        --enable-encoder=pcm_f64be
-        --enable-encoder=pcm_f64le
-        --enable-encoder=pcm_s8
-        --enable-encoder=pcm_s8_planar
-        --enable-encoder=pcm_s16be
-        --enable-encoder=pcm_s16be_planar
-        --enable-encoder=pcm_s16le
-        --enable-encoder=pcm_s16le_planar
-        --enable-encoder=pcm_s24be
-        --enable-encoder=pcm_s24daud
-        --enable-encoder=pcm_s24le
-        --enable-encoder=pcm_s24le_planar
-        --enable-encoder=pcm_s32be
-        --enable-encoder=pcm_s32le
-        --enable-encoder=pcm_s32le_planar
-        --enable-encoder=pcm_s64be
-        --enable-encoder=pcm_s64le
-        --enable-encoder=pcm_u8
-        --enable-encoder=pcm_u16be
-        --enable-encoder=pcm_u16le
-        --enable-encoder=pcm_u24be
-        --enable-encoder=pcm_u24le
-        --enable-encoder=pcm_u32be
-        --enable-encoder=pcm_u32le
-)
-
-# Re-enable ffmpeg / ffprobe ONLY when we build natively.
-# CLANGARM64 on Windows runs Unix tools in x64 emulation and behaves like
-# cross-compilation for FFmpeg configure even on native arm64 runners.
-set(FFMPEG_ENABLE_TOOLS ON)
-if(TARGET_OS STREQUAL "win" AND TARGET_ARCH STREQUAL "arm64")
-    set(FFMPEG_ENABLE_TOOLS OFF)
-endif()
-
-if(NOT CMAKE_CROSSCOMPILING AND FFMPEG_ENABLE_TOOLS)
-    list(APPEND FFMPEG_COMMON_FLAGS
-            --enable-ffmpeg
-            --enable-ffprobe)
+    --disable-everything --disable-autodetect --disable-gpl --disable-nonfree --enable-version3
+    --disable-shared --enable-static --enable-pic --disable-symver --disable-debug --disable-doc
+    --disable-programs --disable-avdevice --disable-avfilter --disable-swscale
+    --enable-avcodec --enable-avformat --enable-avutil --enable-swresample --enable-network
+    --enable-libmp3lame --enable-libopus --enable-libvorbis
+    --optflags=-O2
+    "--extra-cflags=-I${LAME_INSTALL_DIR}/include -I${AUDIO_INSTALL_DIR}/include"
+    "--extra-ldflags=-L${LAME_INSTALL_DIR}/lib -L${AUDIO_INSTALL_DIR}/lib"
+    --pkg-config-flags=--static)
+foreach(category decoders encoders demuxers muxers parsers bsfs protocols)
+    string(JSON count LENGTH "${AUDIO_PROFILE}" ${category})
+    math(EXPR last "${count} - 1")
+    set(names "")
+    foreach(i RANGE ${last})
+        string(JSON name GET "${AUDIO_PROFILE}" ${category} ${i})
+        list(APPEND names "${name}")
+    endforeach()
+    list(JOIN names "," selected)
+    string(REGEX REPLACE "s$" "" singular "${category}")
+    list(APPEND FFMPEG_COMMON_FLAGS "--enable-${singular}=${selected}")
+endforeach()
+if(TARGET_OS STREQUAL "win")
+    list(APPEND FFMPEG_COMMON_FLAGS --enable-schannel)
+elseif(TARGET_OS STREQUAL "osx" OR TARGET_OS STREQUAL "ios")
+    list(APPEND FFMPEG_COMMON_FLAGS --enable-securetransport)
+else()
+    list(APPEND FFMPEG_COMMON_FLAGS --enable-openssl)
 endif()
 
 # Per-platform additions
@@ -387,7 +147,8 @@ if(TARGET_OS STREQUAL "win")
     endif()
 
     # LAME MinGW setup
-    list(APPEND LAME_COMMON_FLAGS --host=${FFMPEG_ARCH}-w64-mingw32)
+    list(APPEND LAME_COMMON_FLAGS --host=${FFMPEG_ARCH}-w64-mingw32
+        "CC=${CMAKE_C_COMPILER}" "AR=${CMAKE_AR}" "RANLIB=${CMAKE_RANLIB}")
 
     list(APPEND FFMPEG_COMMON_FLAGS
             --target-os=mingw32
@@ -415,7 +176,7 @@ elseif(TARGET_OS STREQUAL "osx")
     # LAME macOS setup
     list(APPEND LAME_COMMON_FLAGS
             --host=${MACOS_TARGET}
-            "CFLAGS=-arch ${MACOS_ARCH_CLANG} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
+            "CFLAGS=-O2 -g0 -arch ${MACOS_ARCH_CLANG} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
             "LDFLAGS=-arch ${MACOS_ARCH_CLANG} -mmacosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 
     list(APPEND FFMPEG_COMMON_FLAGS
@@ -500,7 +261,7 @@ elseif(TARGET_OS STREQUAL "ios")
     # LAME iOS setup
     list(APPEND LAME_COMMON_FLAGS
             --host=aarch64-apple-darwin
-            "CFLAGS=-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT} -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
+            "CFLAGS=-O2 -g0 -arch arm64 -isysroot ${CMAKE_OSX_SYSROOT} -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} -Wno-implicit-function-declaration"
             "LDFLAGS=-arch arm64 -isysroot ${CMAKE_OSX_SYSROOT} -miphoneos-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET}")
 
     list(APPEND FFMPEG_COMMON_FLAGS
@@ -542,10 +303,11 @@ include(ExternalProject)
 # LAME Dependency
 ExternalProject_Add(lame_dependency
     URL               ${LAME_URL}
+    URL_HASH          SHA256=${LAME_SHA256}
     PREFIX            ${CMAKE_BINARY_DIR}/lame
     INSTALL_DIR       ${LAME_INSTALL_DIR}
     BUILD_IN_SOURCE   1
-    CONFIGURE_COMMAND ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
+    CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CFLAGS=-O2 -g0 -fPIC" ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
                       --prefix=${LAME_INSTALL_DIR}
                       ${LAME_COMMON_FLAGS}
     BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
@@ -556,13 +318,68 @@ ExternalProject_Add(lame_dependency
     LOG_INSTALL       1
 )
 
+# All third-party archives are static and installed below this build tree.
+set(AUDIO_HOST_FLAGS "")
+foreach(flag IN LISTS LAME_COMMON_FLAGS)
+    if(flag MATCHES "^(--host=|--with-sysroot=|CFLAGS=|LDFLAGS=|CC=|AR=|RANLIB=)")
+        list(APPEND AUDIO_HOST_FLAGS "${flag}")
+    endif()
+endforeach()
+function(add_audio_dependency name)
+    string(JSON url GET "${AUDIO_PROFILE}" dependencies ${name} url)
+    string(JSON sha GET "${AUDIO_PROFILE}" dependencies ${name} sha256)
+    ExternalProject_Add(${name}_dependency
+        URL "${url}" URL_HASH "SHA256=${sha}"
+        PREFIX "${CMAKE_BINARY_DIR}/${name}" BUILD_IN_SOURCE 1
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CFLAGS=-O2 -g0 -fPIC"
+            "PKG_CONFIG_PATH=${AUDIO_INSTALL_DIR}/lib/pkgconfig"
+            ${BASH_EXECUTABLE} <SOURCE_DIR>/configure --prefix=${AUDIO_INSTALL_DIR}
+            --disable-shared --enable-static --with-pic ${AUDIO_HOST_FLAGS} ${ARGN}
+        BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+        INSTALL_COMMAND ${MAKE_EXECUTABLE} install
+        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1)
+endfunction()
+add_audio_dependency(ogg)
+add_audio_dependency(vorbis --disable-docs --disable-examples)
+add_dependencies(vorbis_dependency ogg_dependency)
+add_audio_dependency(opus --disable-doc --disable-extra-programs)
+set(AUDIO_DEPENDENCIES lame_dependency vorbis_dependency opus_dependency)
+if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
+    string(JSON ssl_url GET "${AUDIO_PROFILE}" dependencies openssl url)
+    string(JSON ssl_sha GET "${AUDIO_PROFILE}" dependencies openssl sha256)
+    if(TARGET_OS STREQUAL "android")
+        set(SSL_TARGET android-arm64)
+        set(SSL_ENV "PATH=${NDK_TOOLCHAIN_BIN_DIR}:$ENV{PATH}" "ANDROID_NDK_ROOT=$ENV{ANDROID_NDK_ROOT}")
+        set(SSL_FLAGS -D__ANDROID_API__=${ANDROID_API_LEVEL})
+    else()
+        set(SSL_TARGET linux-x86_64)
+        if(TARGET_ARCH STREQUAL "arm64")
+            set(SSL_TARGET linux-aarch64)
+        endif()
+        set(SSL_ENV "CC=${CMAKE_C_COMPILER}" "AR=${CMAKE_AR}" "RANLIB=${CMAKE_RANLIB}")
+    endif()
+    ExternalProject_Add(openssl_dependency
+        URL "${ssl_url}" URL_HASH "SHA256=${ssl_sha}"
+        PREFIX "${CMAKE_BINARY_DIR}/openssl" BUILD_IN_SOURCE 1
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env ${SSL_ENV} perl <SOURCE_DIR>/Configure
+            ${SSL_TARGET} --prefix=${AUDIO_INSTALL_DIR} --libdir=lib --openssldir=/etc/ssl
+            no-shared no-tests no-apps no-module no-engine no-legacy no-dso -O2 -g0 -fPIC ${SSL_FLAGS}
+        BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+        INSTALL_COMMAND ${MAKE_EXECUTABLE} install_sw
+        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1)
+    list(APPEND AUDIO_DEPENDENCIES openssl_dependency)
+endif()
+
 ExternalProject_Add(ffmpeg_dependency
-        DEPENDS           lame_dependency
+        DEPENDS           ${AUDIO_DEPENDENCIES}
         URL               ${FFMPEG_URL}
+        URL_HASH          SHA256=${FFMPEG_SHA256}
         PREFIX            ${CMAKE_BINARY_DIR}/ffmpeg
         INSTALL_DIR       ${FFMPEG_INSTALL_DIR}
         BUILD_IN_SOURCE   1
-        CONFIGURE_COMMAND ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env
+        "PKG_CONFIG_PATH=${AUDIO_INSTALL_DIR}/lib/pkgconfig"
+        ${BASH_EXECUTABLE} <SOURCE_DIR>/configure
         --prefix=${FFMPEG_INSTALL_DIR}
         ${FFMPEG_COMMON_FLAGS}
         BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
@@ -609,28 +426,30 @@ target_include_directories(soundflow-ffmpeg PRIVATE
 
 target_link_directories(soundflow-ffmpeg PRIVATE
         ${FFMPEG_INSTALL_DIR}/lib
-        ${LAME_INSTALL_DIR}/lib)
+        ${LAME_INSTALL_DIR}/lib
+        ${AUDIO_INSTALL_DIR}/lib)
 
 # Link libraries by name.
 target_link_libraries(soundflow-ffmpeg PRIVATE
         avformat avcodec swresample avutil
-        mp3lame)
+        mp3lame vorbisenc vorbis ogg opus)
+if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
+    target_link_libraries(soundflow-ffmpeg PRIVATE ssl crypto)
+endif()
 
 # Platform system libraries
 if(TARGET_OS STREQUAL "win")
     target_link_libraries(soundflow-ffmpeg PRIVATE
-            bcrypt secur32 ws2_32 iphlpapi)
+            bcrypt secur32 ncrypt crypt32 ws2_32 iphlpapi)
     target_link_options(soundflow-ffmpeg PRIVATE
             -static -static-libgcc -static-libstdc++)
 elseif(TARGET_OS STREQUAL "osx" OR TARGET_OS STREQUAL "ios")
     find_library(CORE_FOUNDATION_FRAMEWORK CoreFoundation)
-    find_library(VIDEO_TOOLBOX_FRAMEWORK VideoToolbox)
-    find_library(AUDIO_TOOLBOX_FRAMEWORK AudioToolbox)
+    find_library(SECURITY_FRAMEWORK Security REQUIRED)
     target_link_libraries(soundflow-ffmpeg PRIVATE
             m pthread
             ${CORE_FOUNDATION_FRAMEWORK}
-            ${VIDEO_TOOLBOX_FRAMEWORK}
-            ${AUDIO_TOOLBOX_FRAMEWORK})
+            ${SECURITY_FRAMEWORK})
 elseif(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "freebsd")
     target_link_libraries(soundflow-ffmpeg PRIVATE m pthread)
 elseif(TARGET_OS STREQUAL "android")

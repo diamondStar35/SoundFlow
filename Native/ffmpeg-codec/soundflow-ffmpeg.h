@@ -71,6 +71,27 @@ typedef int64_t (*sf_seek_callback)(void* pUserData, int64_t offset,
 typedef size_t (*sf_write_callback)(void* pUserData, void* pBuffer,
                                     size_t bytesToWrite);
 
+// Input URL options are copied during initialization. Timeout values are in microseconds.
+typedef int (*sf_interrupt_callback)(void* user_data);
+typedef struct {
+    int64_t timeout_us;
+    int64_t probe_bytes;
+    int64_t analyze_us;
+    const char* user_agent;
+    const char* headers;
+    const char* ca_file;
+    const char* rtsp_transport;
+} SF_NetworkOptions;
+
+// Capability categories: 0 decoders, 1 encoders, 2 demuxers, 3 muxers, 4 input protocols, 5 output protocols.
+SF_FFMPEG_API const char* sf_feature_name(int category, int index);
+SF_FFMPEG_API int sf_non_audio_codec_count(void);
+SF_FFMPEG_API const char* sf_ffmpeg_version(void);
+SF_FFMPEG_API SF_Result sf_decoder_init_url(
+    SF_Decoder* decoder, const char* url, const SF_NetworkOptions* options,
+    sf_interrupt_callback interrupt, void* user_data, SFSampleFormat target_format,
+    SFSampleFormat* native_format, uint32_t* channels, uint32_t* sample_rate);
+
 // Decoder Functions
 SF_FFMPEG_API SF_Decoder* sf_decoder_create();
 SF_FFMPEG_API SF_Result sf_decoder_init(
@@ -87,6 +108,10 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder,
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder,
                                                      int64_t frameIndex);
 SF_FFMPEG_API void sf_decoder_free(SF_Decoder* decoder);
+
+SF_FFMPEG_API SF_Result sf_encoder_init_ex(SF_Encoder* encoder, const char* format_name,
+    sf_write_callback onWrite, sf_seek_callback onSeek, void* user_data,
+    SFSampleFormat sample_format, uint32_t channels, uint32_t sample_rate);
 
 // Encoder Functions
 SF_FFMPEG_API SF_Encoder* sf_encoder_create();

@@ -1,10 +1,11 @@
-name: Build FFmpeg Codec Integration
+name: Build FFmpeg Audio
 
 on:
   workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
 
 # Cancel in-progress runs on new commits to the same branch
 concurrency:
@@ -21,10 +22,12 @@ jobs:
           - arch: x64
             os: windows-2025
             msystem: MINGW64
+            compiler: gcc
             mingw-package-prefix: mingw-w64-x86_64
           - arch: arm64
             os: windows-11-arm
             msystem: CLANGARM64
+            compiler: clang
             mingw-package-prefix: mingw-w64-clang-aarch64
     runs-on: ${{ matrix.os }}
     defaults:
@@ -39,7 +42,8 @@ jobs:
           msystem: ${{ matrix.msystem }}
           update: true
           install: >-
-            ${{ matrix.mingw-package-prefix }}-gcc
+            ${{ matrix.mingw-package-prefix }}-${{ matrix.compiler }}
+            ${{ matrix.mingw-package-prefix }}-python
             ${{ matrix.mingw-package-prefix }}-cmake
             ${{ matrix.mingw-package-prefix }}-ninja
             ${{ matrix.mingw-package-prefix }}-make
@@ -56,6 +60,9 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.arch }}
           cmake --build . --parallel --verbose
+      - name: Verify native audio and network profile
+        run: |
+          python ../../Scripts/verify-ffmpeg.py --library build/runtimes/win-${{ matrix.arch }}/native/soundflow-ffmpeg.dll --report build/runtimes/win-${{ matrix.arch }}/native/capabilities.json
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |
@@ -78,7 +85,7 @@ jobs:
         shell: msys2 {0}
         run: |
           ARTIFACT_DIR="build/runtimes/win-${{ matrix.arch }}/native"
-          FORBIDDEN_MSVCRT_REGEX='(vcruntime[0-9_]*\.dll|msvcp[0-9_]*\.dll|msvcr[0-9]+d?\.dll)'
+          FORBIDDEN_MSVCRT_REGEX='(vcruntime[0-9_]*\.dll|msvcp[0-9_]*\.dll|msvcr[0-9]+d?\.dll|libgcc.*\.dll|libstdc\+\+.*\.dll|libwinpthread.*\.dll)'
           for lib in "$ARTIFACT_DIR"/*.dll; do
             [ -f "$lib" ] || continue
             if objdump -p "$lib" | grep -Eiq "$FORBIDDEN_MSVCRT_REGEX"; then
@@ -91,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: soundflow-ffmpeg-win-${{ matrix.arch }}
-          path: Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*.dll
+          path: Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*
 
   # Linux builds
   build-linux:
@@ -126,6 +133,10 @@ jobs:
           cd build
           cmake .. -DCMAKE_BUILD_TYPE=Release ${{ matrix.cmake_opts }}
           cmake --build . --parallel --verbose
+      - name: Verify native audio and network profile
+        if: matrix.arch == 'x64'
+        run: |
+          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/linux-x64/native/libsoundflow-ffmpeg.so --report build/runtimes/linux-x64/native/capabilities.json
       - name: Analyze Dependencies
         run: |
           NM_CMD="nm"
@@ -194,6 +205,9 @@ jobs:
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake_arch }}
           cmake --build . --parallel --verbose
+      - name: Verify native audio and network profile
+        run: |
+          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/osx-${{ matrix.arch }}/native/libsoundflow-ffmpeg.dylib --report build/runtimes/osx-${{ matrix.arch }}/native/capabilities.json
       - name: Analyze Dependencies
         run: |
           ARTIFACT_DIR="build/runtimes/osx-${{ matrix.arch }}/native"
@@ -242,7 +256,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake nasm yasm pkg-config
+          sudo apt-get install -y cmake nasm yasm pkg-config perl
       - name: Configure and Build
         env:
           ANDROID_NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
