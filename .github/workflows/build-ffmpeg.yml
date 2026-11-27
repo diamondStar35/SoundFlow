@@ -19,9 +19,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-# Cancel in-progress runs on new commits to the same branch
+# Keep independent platform retries from cancelling a complete build.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.platform || 'all' }}
   cancel-in-progress: true
 
 jobs:
