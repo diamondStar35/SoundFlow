@@ -27,6 +27,7 @@ struct SF_Decoder {
     uint8_t* io_buffer;
     sf_read_callback onRead;
     sf_interrupt_callback interrupt;
+    AVDictionary* network_options;
     sf_seek_callback onSeek;
     void* pUserData;
     SFSampleFormat target_format;
@@ -120,6 +121,7 @@ static void sf_decoder_reset_state(SF_Decoder* decoder) {
     avcodec_free_context(&decoder->codec_ctx);
 
     avformat_close_input(&decoder->format_ctx);
+    av_dict_free(&decoder->network_options);
     // Custom AVIO belongs to this wrapper. URL AVIO belongs to avformat_close_input.
     if (decoder->avio_ctx) {
         av_freep(&decoder->avio_ctx->buffer);
@@ -145,6 +147,15 @@ static int decoder_interrupt(void* opaque) {
     return decoder->interrupt ? decoder->interrupt(decoder->pUserData) : 0;
 }
 
+static int network_io_open(AVFormatContext* context, AVIOContext** output, const char* url,
+    int flags, AVDictionary** options) {
+    SF_Decoder* decoder = context->opaque;
+    av_dict_copy(options, decoder->network_options, AV_DICT_DONT_OVERWRITE);
+    // Apply connection policy to nested HLS playlists, media segments, and encryption keys too.
+    av_dict_set(options, "tls_verify", "1", 0);
+    return avio_open2(output, url, flags, &context->interrupt_callback, options);
+}
+
 static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
                                        SFSampleFormat target_format,
                                        SFSampleFormat* out_native_format,
@@ -162,6 +173,8 @@ static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
     if (url) {
         decoder->format_ctx->interrupt_callback.callback = decoder_interrupt;
         decoder->format_ctx->interrupt_callback.opaque = decoder;
+        decoder->format_ctx->opaque = decoder;
+        decoder->format_ctx->io_open = network_io_open;
         av_dict_set(&options, "protocol_whitelist", "http,https,httpproxy,tcp,tls,udp,udplite,rtp,rtmp,rtmps,crypto,data", 0);
         av_dict_set_int(&options, "rw_timeout", network->timeout_us, 0);
         av_dict_set_int(&options, "timeout", network->timeout_us, 0);
@@ -184,6 +197,7 @@ static SF_Result sf_decoder_open_input(SF_Decoder* decoder,
         decoder->format_ctx->pb = decoder->avio_ctx;
         decoder->format_ctx->flags |= AVFMT_FLAG_CUSTOM_IO;
     }
+    if (url) av_dict_copy(&decoder->network_options, options, 0);
     int result = avformat_open_input(&decoder->format_ctx, url, NULL, &options);
     av_dict_free(&options);
     if (result < 0) return SF_RESULT_DECODER_ERROR_OPEN_INPUT;

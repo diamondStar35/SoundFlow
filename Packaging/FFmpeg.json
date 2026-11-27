@@ -161,7 +161,8 @@
     "rtp_mpegts",
     "wav",
     "wv",
-    "mpegts"
+    "mpegts",
+    "webm"
   ],
   "parsers": [
     "aac",

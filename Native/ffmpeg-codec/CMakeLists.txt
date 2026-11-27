@@ -307,6 +307,7 @@ include(ExternalProject)
 ExternalProject_Add(lame_dependency
     URL               ${LAME_URL}
     URL_HASH          SHA256=${LAME_SHA256}
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     PREFIX            ${CMAKE_BINARY_DIR}/lame
     INSTALL_DIR       ${LAME_INSTALL_DIR}
     BUILD_IN_SOURCE   1
@@ -333,14 +334,14 @@ function(add_audio_dependency name)
     string(JSON url GET "${AUDIO_PROFILE}" dependencies ${name} url)
     string(JSON sha GET "${AUDIO_PROFILE}" dependencies ${name} sha256)
     ExternalProject_Add(${name}_dependency
-        URL "${url}" URL_HASH "SHA256=${sha}"
+        URL "${url}" URL_HASH "SHA256=${sha}" DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX "${CMAKE_BINARY_DIR}/${name}" BUILD_IN_SOURCE 1
         PATCH_COMMAND ${CMAKE_COMMAND} -DNAME=${name} -DSOURCE=<SOURCE_DIR>
             -P ${CMAKE_CURRENT_SOURCE_DIR}/PatchDependency.cmake
         CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CFLAGS=-O2 -g0 -fPIC"
             "PKG_CONFIG_PATH=${AUDIO_INSTALL_DIR}/lib/pkgconfig"
             ${BASH_EXECUTABLE} <SOURCE_DIR>/configure --prefix=${AUDIO_INSTALL_DIR}
-            --disable-shared --enable-static --with-pic ${AUDIO_HOST_FLAGS} ${ARGN}
+            --disable-shared --enable-static --with-pic --disable-maintainer-mode ${AUDIO_HOST_FLAGS} ${ARGN}
         BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL} "noinst_PROGRAMS="
         INSTALL_COMMAND ${MAKE_EXECUTABLE} install
         LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 LOG_OUTPUT_ON_FAILURE 1)
@@ -365,7 +366,7 @@ if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
         set(SSL_ENV "CC=${CMAKE_C_COMPILER}" "AR=${CMAKE_AR}" "RANLIB=${CMAKE_RANLIB}")
     endif()
     ExternalProject_Add(openssl_dependency
-        URL "${ssl_url}" URL_HASH "SHA256=${ssl_sha}"
+        URL "${ssl_url}" URL_HASH "SHA256=${ssl_sha}" DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX "${CMAKE_BINARY_DIR}/openssl" BUILD_IN_SOURCE 1
         CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env ${SSL_ENV} perl <SOURCE_DIR>/Configure
             ${SSL_TARGET} --prefix=${AUDIO_INSTALL_DIR} --libdir=lib --openssldir=/etc/ssl
@@ -380,6 +381,7 @@ ExternalProject_Add(ffmpeg_dependency
         DEPENDS           ${AUDIO_DEPENDENCIES}
         URL               ${FFMPEG_URL}
         URL_HASH          SHA256=${FFMPEG_SHA256}
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
         PREFIX            ${CMAKE_BINARY_DIR}/ffmpeg
         INSTALL_DIR       ${FFMPEG_INSTALL_DIR}
         BUILD_IN_SOURCE   1
@@ -391,7 +393,7 @@ ExternalProject_Add(ffmpeg_dependency
         BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND   ${MAKE_EXECUTABLE} install
         LOG_OUTPUT_ON_FAILURE 1
-    LOG_DOWNLOAD      1
+        LOG_DOWNLOAD      1
         LOG_CONFIGURE     1
         LOG_BUILD         1
         LOG_INSTALL       1
