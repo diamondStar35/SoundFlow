@@ -1,0 +1,109 @@
+name: Build Steam Audio integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: Native and managed configuration
+        type: choice
+        options: [Release, Debug]
+        default: Release
+
+permissions:
+  contents: read
+
+jobs:
+  openal:
+    uses: ./.github/workflows/build-openal.yml
+
+  integration:
+    needs: openal
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { rid: win-x64, os: windows-2022, execute: true }
+          - { rid: linux-x64, os: ubuntu-24.04, execute: true }
+          - { rid: osx-x64, os: macos-15-intel, execute: true }
+          - { rid: osx-arm64, os: macos-15, execute: true }
+          - { rid: android-arm64, os: ubuntu-24.04, execute: false }
+          - { rid: ios-arm64, os: macos-15, execute: false }
+    runs-on: ${{ matrix.os }}
+    env:
+      CONFIGURATION: ${{ inputs.configuration }}
+      PACKAGE_VERSION: 5.0.0-ci.steamaudio
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Disabled core needs no module
+        run: dotnet build Src/SoundFlow.csproj -c $env:CONFIGURATION -p:EnableSteamAudio=false --nologo
+      - name: Initialize the pinned module explicitly
+        run: git submodule update --init Modules/SteamAudio.NET
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+      - name: Linux native tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update; sudo apt-get install -y ninja-build clang autoconf automake libtool pkg-config
+      - name: Android NDK
+        if: matrix.rid == 'android-arm64'
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: r28c
+      - name: Build static Steam Audio using the module tooling
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: |
+          python Modules/SteamAudio.NET/scripts/build.py native --target '${{ matrix.rid }}' --linkage static --configuration $env:CONFIGURATION --optimization O2
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          python Modules/SteamAudio.NET/scripts/build.py sdk
+      - uses: actions/download-artifact@v4
+        with:
+          name: openal-${{ matrix.rid }}
+          path: Backends/SoundFlow.Backends.OpenAL/runtimes/${{ matrix.rid }}
+      - name: Real native integration and lifecycle tests
+        if: matrix.execute
+        run: dotnet test Tests/SoundFlow.Tests/SoundFlow.Tests.csproj -c $env:CONFIGURATION -p:EnableSteamAudio=true -p:SteamAudioStaticLink=false --filter 'FullyQualifiedName~RenderProcessingTests|FullyQualifiedName~OnDemandOpenAlTests|FullyQualifiedName~SteamAudio|FullyQualifiedName~SoftwareSourceTests' --nologo
+      - name: Compile the integration for the selected runtime
+        run: dotnet build Src/SoundFlow.csproj -c $env:CONFIGURATION -r '${{ matrix.rid }}' -p:EnableSteamAudio=true --nologo
+      - name: Static NativeAOT consumer
+        if: matrix.execute && (runner.os != 'Windows' || inputs.configuration == 'Release')
+        run: |
+          dotnet publish Samples/SoundFlow.Samples.SteamAudio/SoundFlow.Samples.SteamAudio.csproj -c $env:CONFIGURATION -r '${{ matrix.rid }}' -p:EnableSteamAudio=true -p:PublishAot=true -p:SteamAudioStaticLink=true -o artifacts/steamaudio/aot --nologo
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $app = if ($IsWindows) { './artifacts/steamaudio/aot/SoundFlow.Samples.SteamAudio.exe' } else { './artifacts/steamaudio/aot/SoundFlow.Samples.SteamAudio' }
+          & $app --verify
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          if (Test-Path artifacts/steamaudio/aot/lib/phonon.dll) { throw 'Static publish contains a Steam Audio DLL.' }
+          if (Test-Path artifacts/steamaudio/aot/lib/libphonon.so) { throw 'Static publish contains a Steam Audio shared library.' }
+          if (Test-Path artifacts/steamaudio/aot/lib/libphonon.dylib) { throw 'Static publish contains a Steam Audio shared library.' }
+      - name: Produce matching packages
+        run: |
+          $projects = @('Modules/SteamAudio.NET/Src/SteamAudio.NET.csproj', 'Src/SoundFlow.csproj', 'Codecs/SoundFlow.Codecs.FFMpeg/SoundFlow.Codecs.FFMpeg.csproj', 'Backends/SoundFlow.Backends.OpenAL/SoundFlow.Backends.OpenAL.csproj')
+          foreach ($project in $projects) {
+            dotnet pack $project -c $env:CONFIGURATION -p:EnableSteamAudio=true -p:Version=$env:PACKAGE_VERSION -o artifacts/steamaudio/packages --nologo
+            if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          }
+      - name: Packaged consumer
+        if: matrix.execute
+        run: |
+          $feed = (Resolve-Path artifacts/steamaudio/packages).Path
+          dotnet restore Samples/SoundFlow.Samples.SteamAudio/SoundFlow.Samples.SteamAudio.csproj -r '${{ matrix.rid }}' -p:UsePackages=true -p:SoundFlowPackageVersion=$env:PACKAGE_VERSION -p:PublishAot=true -p:SteamAudioStaticLink=false --source "$feed" --source "https://api.nuget.org/v3/index.json" --nologo
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          dotnet publish Samples/SoundFlow.Samples.SteamAudio/SoundFlow.Samples.SteamAudio.csproj -c $env:CONFIGURATION -r '${{ matrix.rid }}' -p:UsePackages=true -p:SoundFlowPackageVersion=$env:PACKAGE_VERSION -p:PublishAot=true -p:SteamAudioStaticLink=false --no-restore -o artifacts/steamaudio/consumer --nologo
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $app = if ($IsWindows) { './artifacts/steamaudio/consumer/SoundFlow.Samples.SteamAudio.exe' } else { './artifacts/steamaudio/consumer/SoundFlow.Samples.SteamAudio' }
+          & $app --verify
+      - uses: actions/upload-artifact@v4
+        with:
+          name: steamaudio-integration-${{ matrix.rid }}-${{ inputs.configuration }}
+          path: artifacts/steamaudio
+          if-no-files-found: error

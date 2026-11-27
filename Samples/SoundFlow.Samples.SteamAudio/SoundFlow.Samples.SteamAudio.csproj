@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
+    <EnableSteamAudio>true</EnableSteamAudio>
+    <UsePackages Condition="'$(UsePackages)' == ''">false</UsePackages>
+    <SoundFlowPackageVersion Condition="'$(SoundFlowPackageVersion)' == ''">1.4.2</SoundFlowPackageVersion>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(UsePackages)' != 'true'">
+    <ProjectReference Include="../../Src/SoundFlow.csproj" AdditionalProperties="EnableSteamAudio=true" />
+    <ProjectReference Include="../../Backends/SoundFlow.Backends.OpenAL/SoundFlow.Backends.OpenAL.csproj" AdditionalProperties="EnableSteamAudio=true" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UsePackages)' == 'true'">
+    <PackageReference Include="SoundFlow" Version="$(SoundFlowPackageVersion)" />
+    <PackageReference Include="SoundFlow.Backends.OpenAL" Version="$(SoundFlowPackageVersion)" />
+  </ItemGroup>
+  <Import Project="../../Src/SoundFlow.SteamAudio.targets" Condition="'$(UsePackages)' != 'true'" />
+</Project>
