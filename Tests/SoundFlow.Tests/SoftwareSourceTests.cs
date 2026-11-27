@@ -11,6 +11,38 @@ namespace SoundFlow.Tests;
 public sealed class SoftwareSourceTests
 {
     [Fact]
+    public void RenderChainRunsAtMixerConsumptionAndPauseDoesNotRestartAtDecodedEof()
+    {
+        using var engine = new HeadlessEngine();
+        using var device = new SoftwareDevice(engine);
+        var calls = 0;
+        var builder = new SoundFlow.Processing.Builder().Add(format => new RenderProbe(format, () => calls++));
+        using var source = device.CreateSource(new Clip(Enumerable.Range(1, 512).Select(i => i / 1024f).ToArray(), TransportTests.Mono),
+            new SourceOptions { RenderProcessing = builder.Build() });
+        source.Play();
+        device.MasterMixer.PrepareForRender();
+        Assert.Equal(0, calls);
+        var output = new float[256];
+        device.MasterMixer.Process(output, 2);
+        Assert.Equal(1, calls);
+        Assert.Equal(1f / 1024, output[0]);
+        source.Pause();
+        source.Play();
+        Array.Clear(output);
+        device.MasterMixer.Process(output, 2);
+        Assert.Equal(1, calls);
+        Assert.Equal(129f / 1024, output[0]);
+        Assert.Equal(0, source.RenderProcessingState!.Value.RetainedFrames);
+    }
+
+    private sealed class RenderProbe(SoundFlow.Structs.AudioFormat format, Action called)
+        : SoundFlow.Processing.Processor(format, format)
+    {
+        public override void Process(ReadOnlySpan<float> input, Span<float> output, int frames)
+        { called(); input.CopyTo(output); }
+    }
+
+    [Fact]
     public void MonoSourceFramesAreExpandedToStereoWithoutChangingPlaybackDuration()
     {
         using var engine = new HeadlessEngine();

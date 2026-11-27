@@ -24,6 +24,18 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     /// <inheritdoc />
     protected override bool ProcessesModifiersInternally => true;
     private readonly DecodeSession _session;
+    private RenderSession? _render;
+    private readonly int _renderFrames;
+    private readonly int _endpointChannels;
+    private readonly object? _renderDomain;
+    internal bool RequiresRenderDomainAffinity => _render?.Processing.RequiresRenderDomainAffinity == true;
+    private int _pendingRenderEnd;
+    private int _pendingRenderEpoch;
+    private Exception? _renderFailure;
+    /// <summary>On-demand processor definition, or null for decode-ahead-only playback.</summary>
+    public Chain? RenderProcessingChain => _render?.Processing.Definition;
+    /// <summary>Copies bounded decode/render counters for on-demand playback.</summary>
+    public RenderProcessingSnapshot? RenderProcessingState => _render?.GetSnapshot();
     private readonly object _consumeGate = new();
     private DecodeSession.Block? _block;
     private int _offset;
@@ -32,16 +44,29 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     private volatile bool _changing;
     private volatile PlaybackState _state;
     /// <summary>Creates a player which owns its provider and one bounded producer session.</summary>
-    protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider, Chain? processing = null, int endpointChannels = 0) : base(engine, format)
+    protected SoundPlayerBase(Engine engine, AudioFormat format, IDataProvider dataProvider, Chain? processing = null, int endpointChannels = 0, Chain? renderProcessing = null, int renderFrames = 256, object? renderDomain = null) : base(engine, format)
     {
         Transport = new Transport(format, dataProvider);
         try
         {
             var runner = (processing ?? Chain.Empty).CreateRunner(format with { Format = SampleFormat.F32 }, engine.PlaybackConfiguration.BufferFrames);
-            _session = new DecodeSession(engine.Decoding, Transport, process: PublishProcessed, processing: runner, endpointChannels: endpointChannels);
-            SetProcessingFormat(_session.OutputFormat);
+            _renderFrames = renderFrames;
+            _endpointChannels = endpointChannels;
+            _renderDomain = renderDomain;
+            _session = new DecodeSession(engine.Decoding, Transport, process: PublishProcessed, processing: runner,
+                endpointChannels: renderProcessing == null ? endpointChannels : 0, renderConsumer: renderProcessing != null);
+            if (renderProcessing != null)
+            {
+                var late = renderProcessing.CreateRunner(_session.OutputFormat, renderFrames);
+                try { _render = new(_session, late, renderFrames, endpointChannels, renderDomain); }
+                catch { late.Dispose(); throw; }
+                engine.Decoding.RegisterRenderPoll(PollRenderedNotifications);
+            }
+            var output = _render?.OutputFormat ?? _session.OutputFormat;
+            ValidateEndpoint(output);
+            SetProcessingFormat(output);
         }
-        catch { Transport.Dispose(); throw; }
+        catch { _render?.Dispose(); if (_session != null) _session.Dispose(); else Transport.Dispose(); throw; }
     }
     private void PublishProcessed(float[] samples, int count) => SourceBufferProcessed?.Invoke(samples.AsSpan(0, count),
         new BufferInfo(_session.OutputFormat, ProcessingStage.SourceInput, Capability.Playback));
@@ -50,14 +75,43 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         ProcessingScope.ThrowIfProcessing(); ObjectDisposedException.ThrowIf(IsDisposed, this);
         if (State != PlaybackState.Stopped) throw new InvalidOperationException("Stop playback before changing processor structure.");
     }
+    private void ValidateEndpoint(AudioFormat output)
+    {
+        if (_endpointChannels != 0 && output.Ambisonics != null)
+            throw new NotSupportedException("Decode Ambisonics explicitly before device playback.");
+    }
     /// <summary>Validates and installs new processor state while stopped, preserving the transport input domain.</summary>
     public void ConfigureProcessing(Chain? chain)
     {
         RequireStopped();
         var runner = (chain ?? Chain.Empty).CreateRunner(InputFormat with { Format = SampleFormat.F32 }, Engine.PlaybackConfiguration.BufferFrames);
-        try { foreach (var modifier in Modifiers) if (modifier != null) runner.AddModifier(modifier); _session.ReplaceProcessing(runner); }
+        try
+        {
+            foreach (var modifier in Modifiers) if (modifier != null) runner.AddModifier(modifier);
+            if (_render == null) ValidateEndpoint(runner.OutputFormat);
+            if (_render == null) _session.ReplaceProcessing(runner);
+            else _render.ReplaceProducer(runner);
+        }
         catch { if (!ReferenceEquals(_session.Processing, runner)) runner.Dispose(); throw; }
-        finally { SetProcessingFormat(_session.OutputFormat); }
+        finally { SetProcessingFormat(_render?.OutputFormat ?? _session.OutputFormat); }
+    }
+    /// <summary>Replaces late processing while stopped, preserving the established endpoint format.</summary>
+    public void ConfigureRenderProcessing(Chain? chain)
+    {
+        RequireStopped();
+        if (_render == null) throw new NotSupportedException("Create the source with RenderProcessing to reserve its render handoff.");
+        var runner = (chain ?? Chain.Empty).CreateRunner(_session.OutputFormat, _renderFrames);
+        RenderSession replacement;
+        try
+        {
+            ValidateEndpoint(runner.OutputFormat);
+            if (runner.OutputFormat.WithEndpointChannels(Format.Channels) != Format)
+                throw new ArgumentException("Recreate the source to change its endpoint format.");
+            replacement = new(_session, runner, _renderFrames, Format.Channels, _renderDomain);
+        }
+        catch { runner.Dispose(); throw; }
+        _render.Dispose();
+        _render = replacement;
     }
     /// <inheritdoc />
     public override void AddModifier(SoundModifier modifier)
@@ -125,6 +179,14 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         if (_changing || _state != PlaybackState.Playing || !Monitor.TryEnter(_consumeGate)) return;
         try
         {
+            if (_render != null)
+            {
+                var frames = _render.Read(buffer);
+                _position = _render.Position;
+                LastConsumedSamples = frames * channels;
+                if (_render.Completed) CompleteRenderedPlayback();
+                return;
+            }
             var written = 0;
             while (written < buffer.Length)
             {
@@ -153,12 +215,35 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         }
         finally { Monitor.Exit(_consumeGate); }
     }
+    private void CompleteRenderedPlayback()
+    {
+        _state = PlaybackState.Stopped;
+        Enabled = false;
+        _pendingRenderEpoch = _epoch;
+        Volatile.Write(ref _pendingRenderEnd, 1);
+    }
+    private void PollRenderedNotifications()
+    {
+        var error = Interlocked.Exchange(ref _renderFailure, null);
+        if (error != null)
+        {
+            _session.Enable(false);
+            Engine.Decoding.Post(() => { if (!IsDisposed) PlaybackFailed?.Invoke(this, error); });
+        }
+        if (Interlocked.Exchange(ref _pendingRenderEnd, 0) == 0) return;
+        var epoch = _pendingRenderEpoch;
+        if (epoch != _epoch || IsDisposed) return;
+        _session.Enable(false);
+        Engine.Decoding.Post(() => { if (!IsDisposed && epoch == _epoch) OnPlaybackEnded(); });
+    }
     /// <summary>Valid samples consumed during the latest software render call.</summary>
     public int LastConsumedSamples { get; private set; }
     /// <inheritdoc />
     protected override bool HandleProcessingFailure(Exception error)
     {
-        _state = PlaybackState.Stopped; _session.Enable(false); Enabled = false;
+        _state = PlaybackState.Stopped; Enabled = false;
+        if (_render != null) { Volatile.Write(ref _renderFailure, error); return true; }
+        _session.Enable(false);
         Engine.Decoding.Post(() => { if (!IsDisposed) PlaybackFailed?.Invoke(this, error); });
         return true;
     }
@@ -167,9 +252,9 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         ProcessingScope.ThrowIfProcessing();
         _changing = true; _session.Enable(false);
         // Never hold the consumer gate across provider I/O; a live callback skips only this brief state update.
-        lock (_consumeGate) { _epoch++; ReleaseCurrent(); }
+        lock (_consumeGate) { _epoch++; ReleaseCurrent(); _render?.Suspend(); _render?.Reset(_position); }
         try { _session.Change(() => { action(); if (_state == PlaybackState.Playing) Transport.Play(); }, true); }
-        finally { _changing = false; if (_state == PlaybackState.Playing) _session.Enable(true); }
+        finally { _render?.Resume(); _changing = false; if (_state == PlaybackState.Playing) _session.Enable(true); }
     }
     private void ReleaseCurrent() { if (_block != null) { _session.Release(_block); _block = null; _offset = 0; } }
     /// <inheritdoc />
@@ -177,7 +262,8 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         _epoch++;
-        var restarting = _session.Done;
+        var restarting = _session.Done && _state != PlaybackState.Paused;
+        if (_render != null && _state != PlaybackState.Paused) { _render.Suspend(); _render.Reset(restarting ? 0 : _position); _render.Resume(); }
         _session.Change(() => { if (restarting && DataProvider.CanSeek) Transport.Seek(0); Transport.Play(); }, restarting);
         _state = PlaybackState.Playing; Enabled = true; _session.Enable(true);
     }
@@ -218,7 +304,8 @@ public abstract class SoundPlayerBase : SoundComponent, IPlayer
         if (disposing)
         {
             Engine.Decoding.ValidateDisposal(); _epoch++; _state = PlaybackState.Stopped; _session.Enable(false);
-            lock (_consumeGate) ReleaseCurrent();
+            Engine.Decoding.RemoveRenderPoll(PollRenderedNotifications);
+            lock (_consumeGate) { ReleaseCurrent(); _render?.Dispose(); }
             _session.Dispose();
         }
         base.Dispose(disposing);

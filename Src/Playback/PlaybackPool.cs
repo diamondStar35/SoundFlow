@@ -27,6 +27,10 @@ public sealed record PlaybackOptions
     public PlaybackMode Mode { get; init; }
     /// <summary>Invoked for each processed lease. Reusable definitions are safe because binding creates fresh state.</summary>
     public Func<Processing.Chain>? ProcessingFactory { get; init; }
+    /// <summary>Creates a fresh on-demand chain for each processed lease, outside the render callback.</summary>
+    public Func<Processing.Chain>? RenderProcessingFactory { get; init; }
+    /// <summary>Fixed quantum used by the on-demand factory; 256 frames by default.</summary>
+    public int RenderBlockFrames { get; init; } = 256;
     /// <summary>Runs after initial controls but before Play, allowing initial filters and sends without a dry-only first packet.</summary>
     public Action<Source>? Configure { get; init; }
     /// <summary>Higher numbers win; equal priorities never steal one another.</summary>
@@ -85,7 +89,7 @@ public sealed class PlaybackPool : IDisposable
         if (!float.IsFinite(options.Pitch) || options.Pitch <= 0) throw new ArgumentOutOfRangeException(nameof(options.Pitch));
         options.Spatial?.Validate();
         if (!Enum.IsDefined(options.Mode)) throw new ArgumentOutOfRangeException(nameof(options.Mode));
-        if (options.Mode != PlaybackMode.Processed && options.ProcessingFactory != null)
+        if (options.Mode != PlaybackMode.Processed && (options.ProcessingFactory != null || options.RenderProcessingFactory != null))
             throw new ArgumentException("ProcessingFactory requires Processed mode.", nameof(options));
         if (clip.Frames == 0) throw new ArgumentException("A pooled clip must contain audio.", nameof(clip));
         lock (_gate)
@@ -99,7 +103,7 @@ public sealed class PlaybackPool : IDisposable
             {
                 if (options.Mode == PlaybackMode.Prepared && _device.TryGetFeature<IPreparedClips>(out var clips)) prepared = clips.Prepare(clip);
                 userCallback = true;
-                var processing = options.Mode == PlaybackMode.Processed ? new SourceOptions { Processing = options.ProcessingFactory?.Invoke() } : null;
+                var processing = options.Mode == PlaybackMode.Processed ? new SourceOptions { Processing = options.ProcessingFactory?.Invoke(), RenderProcessing = options.RenderProcessingFactory?.Invoke(), RenderBlockFrames = options.RenderBlockFrames } : null;
                 userCallback = false;
                 // Prepare the incoming upload before interrupting the old sound. Once stolen, a playback never resumes.
                 if (victim != null) { Finish(victim, PlaybackEndReason.Stolen); _stolen++; }

@@ -24,10 +24,18 @@ internal sealed class SoftwareSource : Source
             var inputFormat = format;
             if (format.SampleRate != device.Format.SampleRate)
             {
-                inputFormat = format with { SampleRate = device.Format.SampleRate };
+                inputFormat = format with
+                {
+                    SampleRate = device.Format.SampleRate
+                };
                 input = new ConvertedDataProvider(input, format, inputFormat);
             }
-            _player = new SoundPlayer(device.Engine, inputFormat, input, options?.Processing, device.Format.Channels);
+            _player = new SoundPlayer(device.Engine, inputFormat, input, options?.Processing, device.Format.Channels, options?.RenderProcessing, options?.RenderBlockFrames ?? 256, device);
+            if (_player.Format.Ambisonics != null)
+            {
+                _player.Dispose();
+                throw new NotSupportedException("Decode Ambisonics explicitly before device playback.");
+            }
             _player.SourceBufferProcessed += (samples, info) => PublishBuffer(samples, info.Format);
             _player.PlaybackEnded += (_, _) => RaisePlaybackEnded();
             _player.PlaybackFailed += (_, error) => RaisePlaybackTerminated(PlaybackEndReason.Failed, error);
@@ -36,36 +44,64 @@ internal sealed class SoftwareSource : Source
         catch { ReleaseProviderOwnership(); throw; }
     }
     public override AudioFormat RenderedFormat => _player.Format;
+    public override Processing.Chain? RenderProcessingChain => _player.RenderProcessingChain;
+    public override Processing.RenderProcessingSnapshot? RenderProcessingState => _player.RenderProcessingState;
+    public override void ConfigureRenderProcessing(Processing.Chain? chain) => _player.ConfigureRenderProcessing(chain);
     public override Processing.Chain? ProcessingChain => _player.ProcessingChain;
     public override void ConfigureProcessing(Processing.Chain? chain) => _player.ConfigureProcessing(chain);
     public override PlaybackState State => _player.State;
     public override IDataProvider DataProvider => _provider;
-    public override bool IsLooping { get => _player.IsLooping; set => _player.IsLooping = value; }
-    public override float PlaybackSpeed { get => _player.PlaybackSpeed; set => _player.PlaybackSpeed = value; }
-    public override float Volume { get => _player.Volume; set => _player.Volume = value; }
+    public override bool IsLooping
+    {
+        get => _player.IsLooping; set => _player.IsLooping = value;
+    }
+    public override float PlaybackSpeed
+    {
+        get => _player.PlaybackSpeed; set => _player.PlaybackSpeed = value;
+    }
+    public override float Volume
+    {
+        get => _player.Volume; set => _player.Volume = value;
+    }
     public override float Time => _player.Time;
     public override float Duration => _player.Duration;
     public override int LoopStartSamples => ToInput(_player.LoopStartSamples);
     public override int LoopEndSamples => _player.LoopEndSamples < 0 ? -1 : ToInput(_player.LoopEndSamples);
-    public override void Play() { ObjectDisposedException.ThrowIf(IsDisposed, this); BeginPlayback(); _player.Play(); }
-    public override void Pause() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Pause(); }
-    public override void Stop() { ObjectDisposedException.ThrowIf(IsDisposed, this); _player.Stop(); RaisePlaybackTerminated(PlaybackEndReason.Stopped); }
+    public override void Play()
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        BeginPlayback();
+        _player.Play();
+    }
+    public override void Pause()
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        _player.Pause();
+    }
+    public override void Stop()
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        _player.Stop();
+        RaisePlaybackTerminated(PlaybackEndReason.Stopped);
+    }
     public override bool Seek(int sampleOffset) => _player.Seek(ToOutput(sampleOffset));
     public override void SetLoopPoints(int startSample, int endSample = -1) => _player.SetLoopPoints(ToOutput(startSample), endSample < 0 ? -1 : ToOutput(endSample));
     public override void AddModifier(SoundModifier modifier) => _player.AddModifier(modifier);
     public override void RemoveModifier(SoundModifier modifier) => _player.RemoveModifier(modifier);
-    protected internal override bool CanTransferTo(PlaybackDevice device) => !IsDisposed && device.Format == Device.Format && device.Engine == Device.Engine;
+    protected internal override bool CanTransferTo(PlaybackDevice device) => !IsDisposed && device.Format == Device.Format && device.Engine == Device.Engine &&
+        (!_player.RequiresRenderDomainAffinity || ReferenceEquals(device, Device));
     protected internal override void RebindDevice(PlaybackDevice device)
     {
-        if (device.Format != Device.Format || device.Engine != Device.Engine)
-            throw new ArgumentException("A software source transfer requires the same engine and output format.", nameof(device));
+        if (!CanTransferTo(device))
+            throw new ArgumentException("The source requires a compatible output format, engine, and native render domain.", nameof(device));
         Device.MasterMixer.RemoveComponent(_player);
         device.MasterMixer.AddComponent(_player);
         SetDeviceOwner(device);
     }
     protected override void DisposeSource()
     {
-        if (IsDisposed) return;
+        if (IsDisposed)
+            return;
         IsDisposed = true;
         Device.MasterMixer.RemoveComponent(_player);
         _player.Dispose();
@@ -90,6 +126,8 @@ internal sealed class SoftwareSource : Source
         public int ReadSamples(Span<float> buffer, CancellationToken cancellationToken)
             => inner is ICancellableDataProvider cooperative ? cooperative.ReadSamples(buffer, cancellationToken) : inner.ReadSamples(buffer);
         public void Seek(int offset) => inner.Seek(offset);
-        public void Dispose() { }
+        public void Dispose()
+        {
+        }
     }
 }
