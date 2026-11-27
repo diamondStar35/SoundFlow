@@ -93,7 +93,10 @@ if(NOT RUNTIME_ID IN_LIST AUDIO_RIDS)
     message(FATAL_ERROR "Unsupported audio runtime: ${RUNTIME_ID}")
 endif()
 if(NOT CMAKE_BUILD_PARALLEL_LEVEL)
-    set(CMAKE_BUILD_PARALLEL_LEVEL 2)
+    set(CMAKE_BUILD_PARALLEL_LEVEL "$ENV{CMAKE_BUILD_PARALLEL_LEVEL}")
+    if(NOT CMAKE_BUILD_PARALLEL_LEVEL)
+        set(CMAKE_BUILD_PARALLEL_LEVEL 2)
+    endif()
 endif()
 set(CMAKE_C_FLAGS_RELEASE "-O2 -DNDEBUG")
 set(LAME_COMMON_FLAGS --disable-shared --enable-static --with-pic --disable-frontend --disable-decoder)
@@ -106,7 +109,7 @@ set(FFMPEG_COMMON_FLAGS
     --optflags=-O2
     "--extra-cflags=-I${LAME_INSTALL_DIR}/include -I${AUDIO_INSTALL_DIR}/include"
     "--extra-ldflags=-L${LAME_INSTALL_DIR}/lib -L${AUDIO_INSTALL_DIR}/lib"
-    --pkg-config-flags=--static)
+    --pkg-config-flags=--static --pkg-config=pkg-config)
 foreach(category decoders encoders demuxers muxers parsers bsfs protocols)
     string(JSON count LENGTH "${AUDIO_PROFILE}" ${category})
     math(EXPR last "${count} - 1")
@@ -332,11 +335,13 @@ function(add_audio_dependency name)
     ExternalProject_Add(${name}_dependency
         URL "${url}" URL_HASH "SHA256=${sha}"
         PREFIX "${CMAKE_BINARY_DIR}/${name}" BUILD_IN_SOURCE 1
+        PATCH_COMMAND ${CMAKE_COMMAND} -DNAME=${name} -DSOURCE=<SOURCE_DIR>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/PatchDependency.cmake
         CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env "CFLAGS=-O2 -g0 -fPIC"
             "PKG_CONFIG_PATH=${AUDIO_INSTALL_DIR}/lib/pkgconfig"
             ${BASH_EXECUTABLE} <SOURCE_DIR>/configure --prefix=${AUDIO_INSTALL_DIR}
             --disable-shared --enable-static --with-pic ${AUDIO_HOST_FLAGS} ${ARGN}
-        BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+        BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL} "noinst_PROGRAMS="
         INSTALL_COMMAND ${MAKE_EXECUTABLE} install
         LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 LOG_OUTPUT_ON_FAILURE 1)
 endfunction()
@@ -365,8 +370,8 @@ if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
         CONFIGURE_COMMAND ${CMAKE_COMMAND} -E env ${SSL_ENV} perl <SOURCE_DIR>/Configure
             ${SSL_TARGET} --prefix=${AUDIO_INSTALL_DIR} --libdir=lib --openssldir=/etc/ssl
             no-shared no-tests no-apps no-module no-engine no-legacy no-dso -O2 -g0 -fPIC ${SSL_FLAGS}
-        BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
-        INSTALL_COMMAND ${MAKE_EXECUTABLE} install_sw
+        BUILD_COMMAND ${CMAKE_COMMAND} -E env ${SSL_ENV} ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
+        INSTALL_COMMAND ${CMAKE_COMMAND} -E env ${SSL_ENV} ${MAKE_EXECUTABLE} install_sw
         LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 LOG_OUTPUT_ON_FAILURE 1)
     list(APPEND AUDIO_DEPENDENCIES openssl_dependency)
 endif()

@@ -195,7 +195,7 @@ jobs:
             os: macos-15-intel
             cmake_arch: x86_64
           - arch: arm64
-            os: macos-14
+            os: macos-15
             cmake_arch: arm64
     runs-on: ${{ matrix.os }}
     defaults:
