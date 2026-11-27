@@ -2,6 +2,18 @@ name: Build FFmpeg Audio
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform family to rebuild
+        type: choice
+        default: all
+        options:
+          - all
+          - windows
+          - linux
+          - macos
+          - android
+          - ios
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -15,6 +27,7 @@ concurrency:
 jobs:
   # Windows builds
   build-windows:
+    if: inputs.platform == 'all' || inputs.platform == 'windows'
     strategy:
       fail-fast: false
       matrix:
@@ -110,6 +123,7 @@ jobs:
 
   # Linux builds
   build-linux:
+    if: inputs.platform == 'all' || inputs.platform == 'linux'
     strategy:
       fail-fast: false
       matrix:
@@ -187,6 +201,7 @@ jobs:
 
   # macOS builds
   build-macos:
+    if: inputs.platform == 'all' || inputs.platform == 'macos'
     strategy:
       fail-fast: false
       matrix:
@@ -238,7 +253,7 @@ jobs:
               echo "=== File Info ==="
               file "$lib"
               lipo -info "$lib"
-              lipo -verify_arch ${{ matrix.cmake_arch }} "$lib"
+              lipo "$lib" -verify_arch ${{ matrix.cmake_arch }}
               echo -e "\n=== Dependencies ==="
               otool -L "$lib"
               echo -e "\n=== Exports (Exported Functions) ==="
@@ -261,6 +276,7 @@ jobs:
 
   # Android builds
   build-android:
+    if: inputs.platform == 'all' || inputs.platform == 'android'
     strategy:
       fail-fast: false
       matrix:
@@ -334,6 +350,7 @@ jobs:
 
   # iOS build
   build-ios:
+    if: inputs.platform == 'all' || inputs.platform == 'ios'
     runs-on: macos-latest
     defaults:
       run:
