@@ -74,7 +74,6 @@ def pe_imports(data):
 def verify(root, rids, backend="openal"):
     for rid in rids:
         if backend == "ffmpeg":
-            assert not debug_sections(data), f"Embedded debug information: {path}"
             name = "soundflow-ffmpeg.dll" if rid.startswith("win-") else "libsoundflow-ffmpeg.dylib" if rid.startswith("osx-") else "soundflow-ffmpeg.framework/soundflow-ffmpeg" if rid.startswith("ios-") else "libsoundflow-ffmpeg.so"
         else:
             name = "soft_oal.dll" if rid.startswith("win-") else "libopenal.dylib" if rid.startswith("osx-") else "soft_oal.framework/soft_oal" if rid.startswith("ios-") else "libopenal.so"
@@ -83,6 +82,7 @@ def verify(root, rids, backend="openal"):
             raise ValueError(f"Missing native artifact: {path}")
         data = path.read_bytes()
         if backend == "ffmpeg":
+            assert not debug_sections(data), f"Embedded debug information: {path}"
             profile = root / rid / "native" / "ffmpeg" / "profile.json"
             assert json.loads(profile.read_text()) == json.loads((ROOT / "Packaging/FFmpeg.json").read_text()), f"Mismatched build profile: {rid}"
             for export in (b"sf_decoder_init_url", b"sf_encoder_init_ex", b"sf_feature_name"):
