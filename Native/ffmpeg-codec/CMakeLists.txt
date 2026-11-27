@@ -312,6 +312,7 @@ ExternalProject_Add(lame_dependency
                       ${LAME_COMMON_FLAGS}
     BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
     INSTALL_COMMAND   ${MAKE_EXECUTABLE} install
+    LOG_OUTPUT_ON_FAILURE 1
     LOG_DOWNLOAD      1
     LOG_CONFIGURE     1
     LOG_BUILD         1
@@ -337,7 +338,7 @@ function(add_audio_dependency name)
             --disable-shared --enable-static --with-pic ${AUDIO_HOST_FLAGS} ${ARGN}
         BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND ${MAKE_EXECUTABLE} install
-        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1)
+        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 LOG_OUTPUT_ON_FAILURE 1)
 endfunction()
 add_audio_dependency(ogg)
 add_audio_dependency(vorbis --disable-docs --disable-examples)
@@ -366,7 +367,7 @@ if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
             no-shared no-tests no-apps no-module no-engine no-legacy no-dso -O2 -g0 -fPIC ${SSL_FLAGS}
         BUILD_COMMAND ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND ${MAKE_EXECUTABLE} install_sw
-        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1)
+        LOG_DOWNLOAD 1 LOG_CONFIGURE 1 LOG_BUILD 1 LOG_INSTALL 1 LOG_OUTPUT_ON_FAILURE 1)
     list(APPEND AUDIO_DEPENDENCIES openssl_dependency)
 endif()
 
@@ -384,7 +385,8 @@ ExternalProject_Add(ffmpeg_dependency
         ${FFMPEG_COMMON_FLAGS}
         BUILD_COMMAND     ${MAKE_EXECUTABLE} -j${CMAKE_BUILD_PARALLEL_LEVEL}
         INSTALL_COMMAND   ${MAKE_EXECUTABLE} install
-        LOG_DOWNLOAD      1
+        LOG_OUTPUT_ON_FAILURE 1
+    LOG_DOWNLOAD      1
         LOG_CONFIGURE     1
         LOG_BUILD         1
         LOG_INSTALL       1

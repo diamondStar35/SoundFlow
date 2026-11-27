@@ -94,6 +94,14 @@ jobs:
               exit 1
             fi
           done
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-logs-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            Native/ffmpeg-codec/build/**/*.log
+          retention-days: 2
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -163,6 +171,14 @@ jobs:
               $NM_CMD -gD "$lib" | grep " T " || echo "No exported functions found."
             fi
           done
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-logs-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            Native/ffmpeg-codec/build/**/*.log
+          retention-days: 2
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -226,6 +242,14 @@ jobs:
               nm -g "$lib" | grep " T " || echo "No exported functions found."
             fi
           done
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-logs-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            Native/ffmpeg-codec/build/**/*.log
+          retention-days: 2
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -291,6 +315,14 @@ jobs:
               $NM_CMD -gD "$lib" | grep " T " || echo "No exported functions found."
             fi
           done
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-logs-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            Native/ffmpeg-codec/build/**/*.log
+          retention-days: 2
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -365,6 +397,14 @@ jobs:
               nm -g "$lib" | grep " T " || echo "No exported functions found."
             fi
           done
+      - name: Upload build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-logs-${{ github.job }}-${{ strategy.job-index }}
+          path: |
+            Native/ffmpeg-codec/build/**/*.log
+          retention-days: 2
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
