@@ -9,6 +9,42 @@ ROOT = Path(__file__).resolve().parents[1]
 RIDS = json.loads((ROOT / "Packaging/NativePlatforms.json").read_text())["retained"]
 
 
+def debug_sections(data):
+    """Read section names from the distributed PE64, ELF64, or thin Mach-O image."""
+    names = []
+    if data[:4] == b"\x7fELF":
+        table = struct.unpack_from("<Q", data, 40)[0]
+        size, count, strings = struct.unpack_from("<HHH", data, 58)
+        offset, length = struct.unpack_from("<QQ", data, table + strings * size + 24)
+        text = data[offset:offset + length]
+        for index in range(count):
+            start = struct.unpack_from("<I", data, table + index * size)[0]
+            names.append(text[start:text.index(0, start)].decode("ascii"))
+    elif data[:2] == b"MZ":
+        pe = struct.unpack_from("<I", data, 0x3C)[0]
+        count = struct.unpack_from("<H", data, pe + 6)[0]
+        symbols, symbol_count = struct.unpack_from("<II", data, pe + 12)
+        strings = symbols + symbol_count * 18
+        table = pe + 24 + struct.unpack_from("<H", data, pe + 20)[0]
+        for index in range(count):
+            start = table + index * 40
+            name = data[start:start + 8].rstrip(b"\0")
+            if name.startswith(b"/"):
+                start = strings + int(name[1:])
+                name = data[start:data.index(0, start)]
+            names.append(name.decode("ascii"))
+    else:
+        cursor = 32
+        for _ in range(struct.unpack_from("<I", data, 16)[0]):
+            command, size = struct.unpack_from("<II", data, cursor)
+            if command == 0x19:  # LC_SEGMENT_64
+                for index in range(struct.unpack_from("<I", data, cursor + 64)[0]):
+                    start = cursor + 72 + index * 80
+                    names.append(data[start:start + 16].rstrip(b"\0").decode("ascii"))
+            cursor += size
+    return [name for name in names if name.startswith((".debug", ".zdebug", "__debug"))]
+
+
 def pe_imports(data):
     pe = struct.unpack_from("<I", data, 0x3C)[0]
     sections, optional_size = struct.unpack_from("<H12xH", data, pe + 6)
@@ -38,6 +74,7 @@ def pe_imports(data):
 def verify(root, rids, backend="openal"):
     for rid in rids:
         if backend == "ffmpeg":
+            assert not debug_sections(data), f"Embedded debug information: {path}"
             name = "soundflow-ffmpeg.dll" if rid.startswith("win-") else "libsoundflow-ffmpeg.dylib" if rid.startswith("osx-") else "soundflow-ffmpeg.framework/soundflow-ffmpeg" if rid.startswith("ios-") else "libsoundflow-ffmpeg.so"
         else:
             name = "soft_oal.dll" if rid.startswith("win-") else "libopenal.dylib" if rid.startswith("osx-") else "soft_oal.framework/soft_oal" if rid.startswith("ios-") else "libopenal.so"

@@ -414,6 +414,9 @@ add_library(soundflow-ffmpeg SHARED
         soundflow-ffmpeg.c
         soundflow-ffmpeg.h)
 
+# The Android NDK adds -g even to Release. Override it for the wrapper as well as the dependencies.
+target_compile_options(soundflow-ffmpeg PRIVATE "$<$<CONFIG:Release>:-g0>")
+
 add_dependencies(soundflow-ffmpeg ffmpeg_dependency)
 
 # Naming / output
