@@ -29,6 +29,11 @@ This extension provides a high-performance and memory-efficient bridge to FFmpeg
 *   **Cross-Platform:** Includes pre-compiled native binaries for Windows, macOS, Linux, Android, iOS and FreeBSD (x64, x86, ARM64), ensuring it works wherever SoundFlow runs.
 *   **Automatic Format Conversion:** The native wrapper intelligently uses FFmpeg's `swresample` library to automatically convert audio from its source format to the format required by your application (e.g., 32-bit float), simplifying your audio pipeline.
 
+Seekable four-bit mono/stereo IMA ADPCM WAV files are decoded in managed code, so they also work with native
+bundles that omit ADPCM codecs. Decoding retains one block, supports seeking and cancellation, and uses
+the same shared PCM conversion for requested sample rates and channels. Other formats use the native
+FFmpeg wrapper. Existing assets do not need to be re-encoded, and no additional native build is needed.
+
 ## Getting Started
 
 ### Installation

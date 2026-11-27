@@ -62,7 +62,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         if (!SupportedFormatIds.Contains(formatId.ToLowerInvariant()))
             return null;
 
-        var decoder = new FFmpegDecoder(stream, format);
+        ISoundDecoder decoder = ImaWaveDecoder.TryOpen(stream) ?? (ISoundDecoder)new FFmpegDecoder(stream, format);
         if (format.Channels > 0 && format.SampleRate > 0
             && (decoder.Channels != format.Channels || decoder.SampleRate != format.SampleRate))
         {
@@ -80,15 +80,16 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         {
 
             // use hint or a dummy format to initialize the decoder, but the actual format is determined by the underlying FFmpeg wrapper.
-            var decoder = new FFmpegDecoder(stream, hintFormat ?? AudioFormat.DvdHq);
+            ISoundDecoder decoder = ImaWaveDecoder.TryOpen(stream)
+                ?? (ISoundDecoder)new FFmpegDecoder(stream, hintFormat ?? AudioFormat.DvdHq);
 
             // If initialization succeeds, the decoder has determined the actual source format.
             detectedFormat = new AudioFormat
             {
-                Format = decoder.SourceSampleFormat,
-                Channels = decoder.SourceChannels,
-                SampleRate = decoder.SourceSampleRate,
-                Layout = AudioFormat.GetLayoutFromChannels(decoder.SourceChannels)
+                Format = decoder is FFmpegDecoder native ? native.SourceSampleFormat : decoder.SampleFormat,
+                Channels = decoder.Channels,
+                SampleRate = decoder.SampleRate,
+                Layout = AudioFormat.GetLayoutFromChannels(decoder.Channels)
             };
             if (hintFormat.HasValue
                 && hintFormat.Value.Channels > 0
