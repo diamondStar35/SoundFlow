@@ -17,4 +17,9 @@
   <ItemGroup>
     <ProjectReference Include="..\BackendContract\BackendContract.csproj" />
   </ItemGroup>
+  <ItemGroup Condition="'$(EnableSteamAudio)' != 'true'">
+    <Compile Remove="SteamAudioTests.cs" />
+    <Compile Remove="SteamAudioEffectsTests.cs" />
+  </ItemGroup>
+  <Import Project="../../Src/SoundFlow.SteamAudio.targets" Condition="'$(EnableSteamAudio)' == 'true'" />
 </Project>

@@ -1,0 +1,6 @@
+<Project>
+  <PropertyGroup>
+    <_SoundFlowSteamAudioTargets Condition="Exists('$(MSBuildThisFileDirectory)../Modules/SteamAudio.NET/Src/SteamAudio.NET.targets')">$(MSBuildThisFileDirectory)../Modules/SteamAudio.NET/Src/SteamAudio.NET.targets</_SoundFlowSteamAudioTargets>
+  </PropertyGroup>
+  <Import Project="$(_SoundFlowSteamAudioTargets)" Condition="'$(_SoundFlowSteamAudioTargets)' != ''" />
+</Project>

@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
+        <EnableSteamAudio Condition="'$(EnableSteamAudio)' == ''">false</EnableSteamAudio>
         <TargetFramework>net8.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -22,6 +23,18 @@
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <Company>LSXPrime</Company>
     </PropertyGroup>
+
+    <ItemGroup Condition="'$(EnableSteamAudio)' != 'true'">
+        <Compile Remove="SteamAudio/**/*.cs" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(EnableSteamAudio)' == 'true'">
+        <ProjectReference Include="../Modules/SteamAudio.NET/Src/SteamAudio.NET.csproj" Condition="Exists('../Modules/SteamAudio.NET/Src/SteamAudio.NET.csproj')" />
+        <None Include="SoundFlow.SteamAudio.targets" Pack="true" PackagePath="buildTransitive/SoundFlow.targets" />
+    </ItemGroup>
+    <Import Project="SoundFlow.SteamAudio.targets" Condition="'$(EnableSteamAudio)' == 'true'" />
+    <Target Name="CheckSteamAudioModule" BeforeTargets="CollectPackageReferences;PrepareForBuild" Condition="'$(EnableSteamAudio)' == 'true' and !Exists('$(MSBuildThisFileDirectory)../Modules/SteamAudio.NET/Src/SteamAudio.NET.csproj')">
+        <Error Text="SteamAudio.NET is not checked out. Run: git submodule update --init Modules/SteamAudio.NET" />
+    </Target>
 
 <ItemGroup>
 <None Include="..\SOUNDFLOW-THIRD-PARTY-NOTICES.txt"
