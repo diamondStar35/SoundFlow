@@ -1,4 +1,4 @@
-﻿using SoundFlow.Codecs.FFMpeg.Enums;
+using SoundFlow.Codecs.FFMpeg.Enums;
 using SoundFlow.Codecs.FFMpeg.Exceptions;
 using SoundFlow.Interfaces;
 using SoundFlow.Structs;
@@ -16,6 +16,7 @@ internal sealed class FFmpegEncoder : ISoundEncoder
     private readonly SafeEncoderHandle _handle;
     private readonly Stream _stream;
     private readonly FFmpeg.WriteCallback _writeCallback;
+    private readonly FFmpeg.SeekCallback? _seekCallback;
     private readonly int _channels;
 
     /// <summary>
@@ -29,14 +30,15 @@ internal sealed class FFmpegEncoder : ISoundEncoder
         _stream = stream;
         _channels = sourceFormat.Channels;
         _writeCallback = OnWrite;
-        
+        _seekCallback = stream.CanSeek ? OnSeek : null;
+
         _handle = FFmpeg.CreateEncoder();
         if (_handle.IsInvalid)
             throw new InvalidOperationException("Failed to create FFmpeg encoder handle.");
-        
-        var result = FFmpeg.InitializeEncoder(_handle, formatId, _writeCallback, IntPtr.Zero,
-            sourceFormat.Format, (uint)sourceFormat.Channels, (uint)sourceFormat.SampleRate);
-            
+
+        var result = FFmpeg.InitializeEncoder(_handle, formatId, _writeCallback, _seekCallback, IntPtr.Zero,
+            SoundFlow.Enums.SampleFormat.F32, (uint)sourceFormat.Channels, (uint)sourceFormat.SampleRate);
+
         if (result != FFmpegResult.Success)
         {
             var logMessage = $"Failed to initialize FFmpeg encoder for format '{formatId}'. Result: {result}";
@@ -52,8 +54,9 @@ internal sealed class FFmpegEncoder : ISoundEncoder
     /// <inheritdoc />
     public unsafe int Encode(Span<float> samples)
     {
-        if (IsDisposed || samples.IsEmpty) return 0;
-        
+        if (IsDisposed || samples.IsEmpty)
+            return 0;
+
         var frameCount = samples.Length / _channels;
         long framesWritten;
 
@@ -83,12 +86,26 @@ internal sealed class FFmpegEncoder : ISoundEncoder
             return 0;
         }
     }
-    
+
+    private long OnSeek(IntPtr userData, long offset, SeekWhence whence)
+    {
+        try
+        {
+            return whence == SeekWhence.Size ? _stream.Length : _stream.Seek(offset, (SeekOrigin)((int)whence & 0xffff));
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
-        if (IsDisposed) return;
+        if (IsDisposed)
+            return;
         _handle.Dispose();
         GC.KeepAlive(_writeCallback);
+        GC.KeepAlive(_seekCallback);
     }
 }

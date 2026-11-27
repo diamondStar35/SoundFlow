@@ -25,7 +25,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
     [
         // Lossless Formats
         "wav",
-        "aiff",
+        "aiff", "aif", "aifc", "caf",
         "flac",
         "alac",
         "ape",
@@ -36,12 +36,12 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         // Lossy Formats
         "mp3",
         "mp2",
-        "ogg",
+        "ogg", "oga", "weba", "webm",
         "opus",
         "aac",
-        "m4a",
+        "m4a", "m4b", "mp4",
         "wma",
-        "ac3",
+        "ac3", "eac3", "dts", "truehd", "amr", "awb", "sbc",
 
         // Container Formats
         "mka",
@@ -62,7 +62,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         if (!SupportedFormatIds.Contains(formatId.ToLowerInvariant()))
             return null;
 
-        ISoundDecoder decoder = ImaWaveDecoder.TryOpen(stream) ?? (ISoundDecoder)new FFmpegDecoder(stream, format);
+        ISoundDecoder decoder = new FFmpegDecoder(stream, format);
         if (format.Channels > 0 && format.SampleRate > 0
             && (decoder.Channels != format.Channels || decoder.SampleRate != format.SampleRate))
         {
@@ -80,8 +80,7 @@ public sealed class FFmpegCodecFactory : ICodecFactory
         {
 
             // use hint or a dummy format to initialize the decoder, but the actual format is determined by the underlying FFmpeg wrapper.
-            ISoundDecoder decoder = ImaWaveDecoder.TryOpen(stream)
-                ?? (ISoundDecoder)new FFmpegDecoder(stream, hintFormat ?? AudioFormat.DvdHq);
+            ISoundDecoder decoder = new FFmpegDecoder(stream, hintFormat ?? AudioFormat.DvdHq);
 
             // If initialization succeeds, the decoder has determined the actual source format.
             detectedFormat = new AudioFormat
@@ -113,13 +112,21 @@ public sealed class FFmpegCodecFactory : ICodecFactory
     public ISoundEncoder? CreateEncoder(Stream stream, string formatId, AudioFormat format)
     {
         // The native wrapper handles resampling from the source format to what the encoder needs.
-        var encoderName = formatId.ToLowerInvariant();
+        var encoderName = formatId.ToLowerInvariant() switch
+        {
+            "aif" or "aifc" => "aiff",
+            "oga" => "ogg",
+            "mka" => "matroska",
+            "weba" => "webm",
+            "m4b" or "mp4" => "m4a",
+            var name => name
+        };
 
         if (encoderName == "m4a")
         {
             encoderName = format.Format is SampleFormat.S24 or SampleFormat.S32
                 ? "alac"
-                : "aac";
+                : "m4a";
         }
 
         return SupportedFormatIds.Contains(formatId.ToLowerInvariant())

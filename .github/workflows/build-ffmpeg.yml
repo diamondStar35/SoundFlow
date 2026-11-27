@@ -76,6 +76,20 @@ jobs:
       - name: Verify native audio and network profile
         run: |
           python ../../Scripts/verify-ffmpeg.py --library build/runtimes/win-${{ matrix.arch }}/native/soundflow-ffmpeg.dll --report build/runtimes/win-${{ matrix.arch }}/native/ffmpeg/capabilities.json
+      - uses: actions/setup-dotnet@v4
+        if: matrix.arch == 'x64'
+        with:
+          dotnet-version: '8.0.x'
+      - name: Verify NativeAOT codec and network callbacks
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Copy-Item Native/ffmpeg-codec/build/runtimes/win-x64/native/soundflow-ffmpeg.dll Codecs/SoundFlow.Codecs.FFMpeg/runtimes/win-x64/native/soundflow-ffmpeg.dll -Force
+          dotnet publish Tests/CodecAot/CodecAot.csproj -c Release -r win-x64 -o artifacts/codec-aot -m:1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & ./artifacts/codec-aot/CodecAot.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |
@@ -119,7 +133,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: soundflow-ffmpeg-win-${{ matrix.arch }}
-          path: Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*
+          path: |
+            Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/*.dll
+            Native/ffmpeg-codec/build/runtimes/win-${{ matrix.arch }}/native/ffmpeg/**
 
   # Linux builds
   build-linux:

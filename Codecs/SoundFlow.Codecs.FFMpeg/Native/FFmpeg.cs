@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using SoundFlow.Enums;
 using System.Runtime.InteropServices;
 using SoundFlow.Codecs.FFMpeg.Enums;
@@ -41,7 +41,7 @@ internal static partial class FFmpeg
 #endif
 
     #region Delegates
-    
+
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate nuint ReadCallback(IntPtr pUserData, IntPtr pBuffer, nuint bytesToRead);
 
@@ -50,12 +50,12 @@ internal static partial class FFmpeg
 
     [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
     public delegate nuint WriteCallback(IntPtr pUserData, IntPtr pBuffer, nuint bytesToWrite);
-    
+
     #endregion
-    
-        
+
+
     #region Initialization
-    
+
     static FFmpeg()
     {
         NativeLibrary.SetDllImportResolver(typeof(FFmpeg).Assembly, NativeLibraryResolver.Resolve);
@@ -134,7 +134,7 @@ internal static partial class FFmpeg
 
             if (OperatingSystem.IsMacOS())
                 return $"lib{libraryName}.dylib";
-            
+
             // For iOS frameworks, the binary has the same name as the framework
             if (OperatingSystem.IsIOS())
                 return libraryName;
@@ -156,7 +156,6 @@ internal static partial class FFmpeg
             {
                 rid = RuntimeInformation.ProcessArchitecture switch
                 {
-                    Architecture.X86 => "win-x86",
                     Architecture.X64 => "win-x64",
                     Architecture.Arm64 => "win-arm64",
                     _ => throw new PlatformNotSupportedException(
@@ -178,7 +177,6 @@ internal static partial class FFmpeg
                 rid = RuntimeInformation.ProcessArchitecture switch
                 {
                     Architecture.X64 => "linux-x64",
-                    Architecture.Arm => "linux-arm",
                     Architecture.Arm64 => "linux-arm64",
                     _ => throw new PlatformNotSupportedException(
                         $"Unsupported Linux architecture: {RuntimeInformation.ProcessArchitecture}")
@@ -186,10 +184,8 @@ internal static partial class FFmpeg
             }
             else if (OperatingSystem.IsAndroid())
             {
-                 rid = RuntimeInformation.ProcessArchitecture switch
+                rid = RuntimeInformation.ProcessArchitecture switch
                 {
-                    Architecture.X64 => "android-x64",
-                    Architecture.Arm => "android-arm",
                     Architecture.Arm64 => "android-arm64",
                     _ => throw new PlatformNotSupportedException(
                         $"Unsupported Android architecture: {RuntimeInformation.ProcessArchitecture}")
@@ -225,8 +221,34 @@ internal static partial class FFmpeg
             return Path.Combine(relativeBase, rid, "native", platformSpecificName);
         }
     }
-    
+
     #endregion
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate int InterruptCallback(IntPtr userData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NetworkOptions
+    {
+        public long TimeoutMicroseconds;
+        public long ProbeBytes;
+        public long AnalyzeMicroseconds;
+        public nint UserAgent;
+        public nint Headers;
+        public nint CertificateAuthorities;
+        public nint RtspTransport;
+    }
+
+    [LibraryImport(LibraryName, EntryPoint = "sf_feature_name")]
+    public static partial nint FeatureName(int category, int index);
+    [LibraryImport(LibraryName, EntryPoint = "sf_ffmpeg_version")]
+    public static partial nint Version();
+    [LibraryImport(LibraryName, EntryPoint = "sf_non_audio_codec_count")]
+    public static partial int NonAudioCodecCount();
+    [LibraryImport(LibraryName, EntryPoint = "sf_decoder_init_url", StringMarshalling = StringMarshalling.Utf8)]
+    public static partial FFmpegResult InitializeNetworkDecoder(SafeDecoderHandle decoder, string url,
+        in NetworkOptions options, InterruptCallback interrupt, nint userData, SampleFormat targetFormat,
+        out SampleFormat nativeFormat, out uint channels, out uint sampleRate);
 
     #region Decoder Functions
 
@@ -234,7 +256,7 @@ internal static partial class FFmpeg
     public static partial SafeDecoderHandle CreateDecoder();
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_init")]
-    public static partial FFmpegResult InitializeDecoder(SafeDecoderHandle decoder, ReadCallback onRead, SeekCallback onSeek, IntPtr pUserData,
+    public static partial FFmpegResult InitializeDecoder(SafeDecoderHandle decoder, ReadCallback onRead, SeekCallback? onSeek, IntPtr pUserData,
         SampleFormat targetFormat, out SampleFormat outNativeFormat, out uint outChannels, out uint outSamplerate);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_decoder_get_length_in_pcm_frames")]
@@ -256,8 +278,8 @@ internal static partial class FFmpeg
     [LibraryImport(LibraryName, EntryPoint = "sf_encoder_create")]
     public static partial SafeEncoderHandle CreateEncoder();
 
-    [LibraryImport(LibraryName, EntryPoint = "sf_encoder_init", StringMarshalling = StringMarshalling.Utf8)]
-    public static partial FFmpegResult InitializeEncoder(SafeEncoderHandle encoder, string formatName, WriteCallback onWrite, IntPtr pUserData,
+    [LibraryImport(LibraryName, EntryPoint = "sf_encoder_init_ex", StringMarshalling = StringMarshalling.Utf8)]
+    public static partial FFmpegResult InitializeEncoder(SafeEncoderHandle encoder, string formatName, WriteCallback onWrite, SeekCallback? onSeek, IntPtr pUserData,
         SampleFormat sampleFormat, uint channels, uint sampleRate);
 
     [LibraryImport(LibraryName, EntryPoint = "sf_encoder_write_pcm_frames")]
@@ -269,7 +291,7 @@ internal static partial class FFmpeg
     #endregion
 
     #region Helper Functions
-    
+
     [LibraryImport(LibraryName, EntryPoint = "sf_result_to_string")]
     [return: MarshalAs(UnmanagedType.LPStr)]
     public static partial string ResultToString(FFmpegResult result);

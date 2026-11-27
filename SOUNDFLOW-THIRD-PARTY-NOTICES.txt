@@ -68,26 +68,16 @@ modification, are permitted provided that the following conditions are met:
     without specific prior written permission.
 
 --------------------------------------------------------------------------------
-4. FFmpeg
-License: LGPL v2.1 or later
+4. FFmpeg audio runtime
+License: LGPL v3 or later
 Copyright (c) the FFmpeg developers
 
-SoundFlow.Codecs.FFMpeg utilizes FFmpeg libraries for audio decoding and encoding.
-The FFmpeg binaries used are licensed under the GNU Lesser General Public 
-License (LGPL) version 2.1 or later. 
+The audio runtime uses FFmpeg 8.0.3 with GPL and nonfree components disabled and version 3 enabled.
+The source profile, hashes and rebuild configuration are in Packaging/FFmpeg.json and
+Native/ffmpeg-codec. FFmpeg is a trademark of Fabrice Bellard.
 
-FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project.
-
-Compliance Disclosure:
-- The native wrapper (soundflow-ffmpeg) is built using static linking to 
-  FFmpeg libraries with the following configuration:
-  --disable-gpl --disable-nonfree --enable-pic --disable-shared --enable-static
-- This configuration ensures the binary is LGPL-compliant and does not contain 
-  GPL or non-free code.
-- As per LGPL requirements for static linking, the source code for the 
-  SoundFlow FFmpeg wrapper (soundflow-ffmpeg.c/.h) is provided in this 
-  distribution/repository under the MIT license.
-- This allows users to modify and re-link the native wrapper against different 
-  versions of the FFmpeg libraries.
-- The source code for FFmpeg can be found at: https://ffmpeg.org/download.html
+Statically linked audio libraries: LAME (LGPL), Opus, libvorbis and libogg (BSD-style licenses).
+Linux/Android also link OpenSSL 3.5 LTS (Apache License 2.0). Windows and Apple use platform TLS.
+Full dependency notices accompany the runtime under ffmpeg/notices. The public native wrapper
+source and build configuration allow rebuilding/relinking against the documented dependency sources.
 --------------------------------------------------------------------------------
