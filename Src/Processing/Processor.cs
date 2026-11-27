@@ -10,25 +10,59 @@ public abstract class Processor : IDisposable
 {
     internal int Lease;
     /// <summary>Exact format accepted by Process. A processor instance belongs to only one running chain.</summary>
-    public AudioFormat InputFormat { get; }
+    public AudioFormat InputFormat
+    {
+        get;
+    }
     /// <summary>Exact format written by Process and Drain; must retain the input sample rate.</summary>
-    public AudioFormat OutputFormat { get; }
+    public AudioFormat OutputFormat
+    {
+        get;
+    }
+    /// <summary>
+    /// Required frames per processing call, or zero for arbitrary chunks. Fixed native effects belong in
+    /// the render stage, whose consumer gathers complete blocks before invoking them.
+    /// </summary>
+    public virtual int RequiredBlockFrames => 0;
     /// <summary>Constant algorithmic buffering delay, in frames. Excludes artistic delay and directional interaural differences.</summary>
     public virtual int LatencyFrames => 0;
     /// <summary>Hard upper bound on frames returned by Drain, including buffered input. Zero declares no tail.</summary>
     public virtual int MaximumTailFrames => LatencyFrames;
     /// <summary>Explicit opt-in used by sends selecting ProcessorOptIn compensation. False by default.</summary>
-    public bool CompensateLatency { get; init; }
+    public bool CompensateLatency
+    {
+        get; init;
+    }
     /// <summary>Creates state with explicit input and output formats. Allocation belongs in construction, not Process.</summary>
-    protected Processor(AudioFormat input, AudioFormat output) { InputFormat = input; OutputFormat = output; }
+    protected Processor(AudioFormat input, AudioFormat output)
+    {
+        InputFormat = input;
+        OutputFormat = output;
+    }
     /// <summary>Writes exactly frames complete output frames from the same number of input frames; do not retain either span.</summary>
     public abstract void Process(ReadOnlySpan<float> input, Span<float> output, int frames);
     /// <summary>Writes up to output.Length / OutputFormat.Channels tail frames. Zero ends the tail permanently until reset/new input.</summary>
     public virtual int Drain(Span<float> output) => 0;
     /// <summary>Clears history on seek, stop/restart or replacement. Pause/resume does not reset the processor.</summary>
-    public virtual void Reset() { }
+    public virtual void Reset()
+    {
+    }
     /// <summary>Releases owned state after processing has quiesced. Shared immutable assets remain their owner's responsibility.</summary>
-    public virtual void Dispose() { }
+    public virtual void Dispose()
+    {
+    }
+}
+
+internal interface IChainBinding
+{
+    void Bind(object owner);
+    void BeginQuantum(long sequence)
+    {
+    }
+    void BindRenderDomain(object domain)
+    {
+    }
+    bool RequiresRenderDomainAffinity => false;
 }
 
 /// <summary>Send timing policy. No compensation is the default; every compensation path requires an explicit opt-in.</summary>

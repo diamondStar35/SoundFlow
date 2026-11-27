@@ -36,6 +36,12 @@ public sealed record DiagnosticsSnapshot
     public int AuxiliarySends { get; init; }
     /// <summary>Current native wet-only endpoints consuming software captures, additional to logical sources.</summary>
     public int ProcessingEndpoints { get; init; }
+    /// <summary>Logical sources rendered on demand rather than into native streaming queues.</summary>
+    public int OnDemandSources { get; init; }
+    /// <summary>Rendered frames retained by on-demand sources; excludes decoded input and device buffers.</summary>
+    public long RetainedRenderFrames { get; init; }
+    /// <summary>Missing-input quanta observed by render consumers.</summary>
+    public long RenderUnderruns { get; init; }
     /// <summary>Current logical source count; excludes graph feeds and internal processing endpoints.</summary>
     public int Sources { get; init; }
     /// <summary>Current effect-slot count.</summary>

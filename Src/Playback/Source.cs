@@ -22,6 +22,13 @@ public abstract class Source : FeatureHost, IPlayer
     public virtual AudioFormat RenderedFormat => Format;
     /// <summary>Current reusable chain definition, or null for a backend's identity path.</summary>
     public virtual Processing.Chain? ProcessingChain => null;
+    /// <summary>Processing performed during rendering, after decoded-input buffering.</summary>
+    public virtual Processing.Chain? RenderProcessingChain => null;
+    /// <summary>On-demand buffering and starvation counters, or null when rendering is performed ahead of consumption.</summary>
+    public virtual Processing.RenderProcessingSnapshot? RenderProcessingState => null;
+    /// <summary>Replaces on-demand processing while stopped. Unsupported endpoints reject this operation.</summary>
+    public virtual void ConfigureRenderProcessing(Processing.Chain? chain) => throw new NotSupportedException("Render processing is unavailable on this source.");
+    internal void AddProcessingFeature<T>(T feature) where T : class => RegisterFeature(feature);
     /// <summary>Replaces software structure while stopped. A backend validates formats and allocates replacement state before committing.</summary>
     public virtual void ConfigureProcessing(Processing.Chain? chain) => throw new NotSupportedException("This source does not support configurable processing chains.");
     /// <summary>Whether the source has been disposed.</summary>

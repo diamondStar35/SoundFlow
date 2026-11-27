@@ -53,12 +53,11 @@ public sealed class DecodeSession : IDisposable
     /// <summary>Owned, serialized DSP state. Backends edit it only through Change while stopped.</summary>
     public Runner Processing { get; private set; }
     /// <summary>Final packet format, including optional endpoint channel conversion.</summary>
-    public AudioFormat OutputFormat => Processing.OutputFormat with
-    {
-        Channels = _endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels,
-        Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? Processing.OutputFormat.Channels : _endpointChannels)
-    };
+    public AudioFormat OutputFormat => Processing.OutputFormat.WithEndpointChannels(_endpointChannels);
     private readonly Queue<Block> _ready;
+    private readonly SpscRing<Block>? _renderReady;
+    private readonly SpscRing<Block>? _renderReturned;
+    internal RenderSession? RenderConsumer;
     private readonly DecodeScheduler _scheduler;
     private readonly Transport _transport;
     private readonly Action<float[], int>? _process;
@@ -74,12 +73,13 @@ public sealed class DecodeSession : IDisposable
     private ExceptionDispatchInfo? _failure;
     private long _starvations;
     private long _failures;
+    private long _renderBufferedFrames;
     /// <summary>Whether the decoder reached the end. Ready blocks may still need consumption.</summary>
-    public bool Done { get { lock (_gate) return _done; } }
+    public bool Done { get { if (_renderReady != null) return Volatile.Read(ref _done); lock (_gate) return _done; } }
     /// <summary>Completed blocks awaiting consumption; excludes blocks checked out by the consumer.</summary>
-    public int ReadyCount { get { lock (_gate) return _ready.Count; } }
+    public int ReadyCount { get { if (_renderReady != null) return _renderReady.Count; lock (_gate) return _ready.Count; } }
     /// <summary>Ready PCM frames, excluding downstream native buffers.</summary>
-    public long BufferedFrames { get { lock (_gate) return _ready.Sum(b => (long)b.Count / OutputFormat.Channels); } }
+    public long BufferedFrames { get { if (_renderReady != null) return Interlocked.Read(ref _renderBufferedFrames); lock (_gate) return _ready.Sum(b => (long)b.Count / OutputFormat.Channels); } }
     /// <summary>Producer turns yielding no samples before end of input.</summary>
     public long Starvations => Interlocked.Read(ref _starvations);
     /// <summary>Terminal producer failures captured by this session.</summary>
@@ -90,7 +90,7 @@ public sealed class DecodeSession : IDisposable
     /// file and custom providers must use scheduled mode.
     /// </summary>
     public DecodeSession(DecodeScheduler scheduler, Transport transport, int frames = 0, int blocks = 0,
-        Action<float[], int>? process = null, bool inline = false, Action? prepare = null, Runner? processing = null, int endpointChannels = 0)
+        Action<float[], int>? process = null, bool inline = false, Action? prepare = null, Runner? processing = null, int endpointChannels = 0, bool renderConsumer = false)
     {
         _scheduler = scheduler; _transport = transport; _process = process; _inline = inline; _prepare = prepare;
         frames = frames == 0 ? scheduler.Configuration.BufferFrames : frames;
@@ -102,11 +102,19 @@ public sealed class DecodeSession : IDisposable
         _frames = frames; _blocks = blocks; _endpointChannels = endpointChannels;
         Processing = processing ?? Chain.Empty.CreateRunner(transport.Format with { Format = Enums.SampleFormat.F32 }, frames);
         _free = new Queue<Block>(blocks); _ready = new Queue<Block>(blocks);
-        try { RebuildPackets(); ResetProcessing(); scheduler.Register(this); } catch { Processing.Dispose(); throw; }
+        if (renderConsumer) { _renderReady = new(blocks); _renderReturned = new(blocks); }
+        try
+        {
+            if (Processing.RequiresRenderDomainAffinity)
+                throw new ArgumentException("Native render-domain processors belong in RenderProcessing, not decode-ahead processing.", nameof(processing));
+            RebuildPackets(); ResetProcessing(); scheduler.Register(this);
+        }
+        catch { Processing.Dispose(); throw; }
     }
     private void RebuildPackets()
     {
         _version++; _free.Clear(); _ready.Clear();
+        CollectRenderPackets();
         for (var i = 0; i < _blocks; i++) _free.Enqueue(new Block(_frames, Processing, OutputFormat, _version));
     }
     private void ResetProcessing()
@@ -119,6 +127,8 @@ public sealed class DecodeSession : IDisposable
     public void ReplaceProcessing(Runner replacement)
     {
         ArgumentNullException.ThrowIfNull(replacement);
+        if (replacement.RequiresRenderDomainAffinity)
+            throw new ArgumentException("Native render-domain processors belong in RenderProcessing, not decode-ahead processing.", nameof(replacement));
         if (ReferenceEquals(Processing, replacement)) throw new ArgumentException("Replacement state must be a different runner.", nameof(replacement));
         if (replacement.InputFormat != (_transport.Format with { Format = Enums.SampleFormat.F32 }) || replacement.MaximumFrames != _frames)
             throw new ArgumentException("Replacement input format and packet bound must match the transport.");
@@ -129,11 +139,7 @@ public sealed class DecodeSession : IDisposable
             {
                 // Finish allocation and user Reset before publication. A failed replacement leaves the
                 // previous runner and its packets intact; no user code runs inside the commit below.
-                var output = replacement.OutputFormat with
-                {
-                    Channels = _endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels,
-                    Layout = AudioFormat.GetLayoutFromChannels(_endpointChannels == 0 ? replacement.OutputFormat.Channels : _endpointChannels)
-                };
+                var output = replacement.OutputFormat.WithEndpointChannels(_endpointChannels);
                 var packets = Enumerable.Range(0, _blocks).Select(_ => new Block(_frames, replacement, output, _version + 1)).ToArray();
                 var clock = new int[replacement.LatencyFrames];
                 var position = _transport.SamplePosition;
@@ -145,6 +151,7 @@ public sealed class DecodeSession : IDisposable
                     Processing = replacement;
                     _version++;
                     _generation++;
+                    CollectRenderPackets();
                     _free.Clear();
                     _ready.Clear();
                     foreach (var packet in packets) _free.Enqueue(packet);
@@ -200,9 +207,10 @@ public sealed class DecodeSession : IDisposable
     {
         lock (_gate)
         {
+            CollectReturnedPackets();
             if (_inline || _scheduled || !_enabled || _disposed || _done || _free.Count == 0 || _cancel.IsCancellationRequested) return;
             _scheduled = true;
-            _scheduler.Enqueue(this, _ready.Count == 0);
+            _scheduler.Enqueue(this, ReadyCount == 0);
         }
     }
     /// <summary>Discards decode-ahead before serializing a control operation with the transport.</summary>
@@ -211,31 +219,45 @@ public sealed class DecodeSession : IDisposable
         ProcessingScope.ThrowIfProcessing();
         DecodeScheduler.ValidateControlThread();
         ThrowIfFailed();
-        lock (_transportGate)
+        var consumer = Volatile.Read(ref RenderConsumer);
+        consumer?.Suspend();
+        try
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            action();
-            lock (_gate)
+            lock (_transportGate)
             {
-                if (invalidate)
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                action();
+                lock (_gate)
                 {
-                    _generation++; _done = false; _starved = false; ResetProcessing();
-                    while (_ready.TryDequeue(out var block)) _free.Enqueue(block);
+                    if (invalidate)
+                    {
+                        _generation++; _done = false; _starved = false; ResetProcessing();
+                        while (_ready.TryDequeue(out var block)) _free.Enqueue(block);
+                        CollectRenderPackets();
+                    }
                 }
             }
+            Request();
         }
-        Request();
+        finally { consumer?.Resume(); }
     }
     /// <summary>Consumes a ready block. Offline callers may wait; live callers receive false immediately on starvation.</summary>
     public bool TryTake(bool wait, out Block? block)
     {
         if (wait) DecodeScheduler.ValidateControlThread();
+        if (_renderReady != null && !wait)
+        {
+            Volatile.Read(ref _failure)?.Throw();
+            if (!_renderReady.TryRead(out block)) return false;
+            Interlocked.Add(ref _renderBufferedFrames, -block!.Count / OutputFormat.Channels);
+            return true;
+        }
         if (_inline) RunOne();
         Request();
         lock (_gate)
         {
             var deadline = Environment.TickCount64 + 15000;
-            while (wait && _ready.Count == 0 && !_done && !_starved && _enabled && !_disposed && !_cancel.IsCancellationRequested)
+            while (wait && ReadyCount == 0 && !_done && !_starved && _enabled && !_disposed && !_cancel.IsCancellationRequested)
             {
                 _failure?.Throw();
                 var remaining = deadline - Environment.TickCount64;
@@ -243,7 +265,10 @@ public sealed class DecodeSession : IDisposable
                 Monitor.Wait(_gate, (int)remaining);
             }
             _failure?.Throw();
-            return _ready.TryDequeue(out block);
+            if (_renderReady == null) return _ready.TryDequeue(out block);
+            if (!_renderReady.TryRead(out block)) return false;
+            Interlocked.Add(ref _renderBufferedFrames, -block!.Count / OutputFormat.Channels);
+            return true;
         }
     }
     /// <summary>Waits for producer readiness without consuming audio. Intended for offline graph preparation.</summary>
@@ -255,7 +280,7 @@ public sealed class DecodeSession : IDisposable
         lock (_gate)
         {
             var deadline = Environment.TickCount64 + 15000;
-            while (_ready.Count == 0 && !_done && !_starved && _enabled && !_disposed && !_cancel.IsCancellationRequested)
+            while (ReadyCount == 0 && !_done && !_starved && _enabled && !_disposed && !_cancel.IsCancellationRequested)
             {
                 _failure?.Throw();
                 var remaining = deadline - Environment.TickCount64;
@@ -266,7 +291,32 @@ public sealed class DecodeSession : IDisposable
         }
     }
     /// <summary>Returns a checked-out block and requests another bounded producer turn.</summary>
-    public void Release(Block block) { lock (_gate) { if (!_disposed && block.Version == _version) _free.Enqueue(block); } Request(); }
+    public void Release(Block block)
+    {
+        if (_renderReturned != null)
+        {
+            if (!_renderReturned.TryWrite(block)) throw new InvalidOperationException("Decoded packet returned twice.");
+            return;
+        }
+        lock (_gate) { if (!_disposed && block.Version == _version) _free.Enqueue(block); }
+        Request();
+    }
+    private void CollectReturnedPackets()
+    {
+        if (_renderReturned == null) return;
+        while (_renderReturned.TryRead(out var block))
+            if (block!.Version == _version) _free.Enqueue(block);
+    }
+    private void CollectRenderPackets()
+    {
+        CollectReturnedPackets();
+        if (_renderReady == null) return;
+        while (_renderReady.TryRead(out var block))
+        {
+            Interlocked.Add(ref _renderBufferedFrames, -block!.Count / OutputFormat.Channels);
+            if (block.Version == _version) _free.Enqueue(block);
+        }
+    }
     internal void RunOne()
     {
         Block? block; int generation;
@@ -308,10 +358,19 @@ public sealed class DecodeSession : IDisposable
                 {
                     if (generation == _generation && !_disposed)
                     {
-                        _done = _inputEnded && frames == 0 && Processing.Completed;
+                        Volatile.Write(ref _done, _inputEnded && frames == 0 && Processing.Completed);
                         _starved = block.Count == 0 && !_done;
                         if (_starved) Interlocked.Increment(ref _starvations);
-                        if (block.Count > 0) { _ready.Enqueue(block); produced = true; }
+                        if (block.Count > 0)
+                        {
+                            if (_renderReady == null) _ready.Enqueue(block);
+                            else
+                            {
+                                Interlocked.Add(ref _renderBufferedFrames, block.Count / OutputFormat.Channels);
+                                if (!_renderReady.TryWrite(block)) throw new InvalidOperationException("Decoded queue exceeded its capacity.");
+                            }
+                            produced = true;
+                        }
                     }
                 }
             }

@@ -16,6 +16,9 @@ public sealed class DecodeScheduler : IDisposable
     private bool _stopping;
     private bool _accepting = true;
     private DecodeSession[] _snapshot = [];
+    private Action[] _renderPolls = [];
+    internal void RegisterRenderPoll(Action poll) { lock (_gate) Volatile.Write(ref _renderPolls, [.. _renderPolls, poll]); }
+    internal void RemoveRenderPoll(Action poll) { lock (_gate) Volatile.Write(ref _renderPolls, _renderPolls.Where(item => item != poll).ToArray()); }
     private long _retiredStarvations;
     private long _retiredFailures;
     private int _active;
@@ -28,7 +31,7 @@ public sealed class DecodeScheduler : IDisposable
     {
         configuration.Validate(); Configuration = configuration;
         _workers = Enumerable.Range(0, configuration.WorkerCount).Select(i => new Thread(Run)
-            { IsBackground = true, Name = $"SoundFlow decode {i + 1}" }).ToArray();
+        { IsBackground = true, Name = $"SoundFlow decode {i + 1}" }).ToArray();
         foreach (var worker in _workers) worker.Start();
         _retry = new Timer(_ => Retry(), null, 5, 5);
     }
@@ -87,6 +90,7 @@ public sealed class DecodeScheduler : IDisposable
     private void Retry()
     {
         foreach (var session in Volatile.Read(ref _snapshot)) session.Request();
+        foreach (var poll in Volatile.Read(ref _renderPolls)) poll();
     }
 
     /// <summary>Posts a lifecycle notification outside decoding and mixing locks. Handler exceptions do not stop dispatch.</summary>
