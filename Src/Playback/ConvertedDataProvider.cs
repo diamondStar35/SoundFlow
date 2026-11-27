@@ -13,6 +13,9 @@ internal sealed class ConvertedDataProvider : ICancellableDataProvider
     private readonly bool _canSeek;
     public ConvertedDataProvider(IDataProvider provider, AudioFormat source, AudioFormat target)
     {
+        source.ValidateChannelLayout(); target.ValidateChannelLayout();
+        if (source.Ambisonics != target.Ambisonics)
+            throw new NotSupportedException("Sample-rate conversion cannot change Ambisonics ordering or normalization.");
         _canSeek = provider.CanSeek;
         _decoder = new PcmFormatConvertingDecoder(new ProviderDecoder(provider, source), target.Channels, target.SampleRate);
         _decoder.EndOfStreamReached += (_, _) => EndOfStreamReached?.Invoke(this, EventArgs.Empty);

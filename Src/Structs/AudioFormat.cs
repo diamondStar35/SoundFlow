@@ -1,4 +1,4 @@
-﻿using SoundFlow.Enums;
+using SoundFlow.Enums;
 using SoundFlow.Metadata;
 using SoundFlow.Metadata.Models;
 using SoundFlow.Utils;
@@ -38,7 +38,10 @@ public enum ChannelLayout
     /// <summary>
     /// Eight audio channels for a 7.1 surround sound setup (L, R, C, LFE, SL, SR, SideL, SideR).
     /// </summary>
-    Surround71
+    Surround71,
+
+    /// <summary>Spherical-harmonic channels described by AudioFormat.Ambisonics, not speaker positions.</summary>
+    Ambisonics
 }
 
 /// <summary>
@@ -66,6 +69,37 @@ public record struct AudioFormat
     /// Gets or sets the sample rate in Hertz (e.g., 44100, 48000).
     /// </summary>
     public int SampleRate;
+
+    /// <summary>Explicit spherical-harmonic order and convention. Null denotes ordinary speaker PCM.</summary>
+    public AmbisonicsFormat? Ambisonics;
+
+    /// <summary>Checks channel metadata without inferring Ambisonics from the number of channels.</summary>
+    public readonly void ValidateChannelLayout()
+    {
+        if (Ambisonics is { } ambisonics)
+        {
+            ambisonics.Validate();
+            if (Layout != ChannelLayout.Ambisonics || Channels != ambisonics.Channels)
+                throw new ArgumentException("Ambisonics order, channel count and layout must agree.");
+        }
+        else if (Layout == ChannelLayout.Ambisonics)
+            throw new ArgumentException("Ambisonics layout requires explicit order and convention.");
+    }
+
+    /// <summary>Preserves authored channel metadata unless a speaker conversion is explicitly required.</summary>
+    public readonly AudioFormat WithEndpointChannels(int channels)
+    {
+        ValidateChannelLayout();
+        if (channels == 0 || channels == Channels)
+            return this;
+        if (Ambisonics != null)
+            throw new NotSupportedException("Decode Ambisonics explicitly before speaker channel conversion.");
+        return this with
+        {
+            Channels = channels,
+            Layout = GetLayoutFromChannels(channels)
+        };
+    }
 
     /// <summary>
     /// Gets the inverse of the sample rate.
@@ -212,7 +246,8 @@ public record struct AudioFormat
     public static AudioFormat? GetFormatFromStream(Stream stream)
     {
         var metadata = SoundMetadataReader.Read(stream);
-        if(metadata.IsFailure || metadata.Value is null) return null;
+        if (metadata.IsFailure || metadata.Value is null)
+            return null;
         return new AudioFormat
         {
             Format = metadata.Value.BitsPerSample > 0 ? metadata.Value.BitsPerSample.GetSampleFormatFromBitsPerSample() : SampleFormat.S16, // Some formats may not have a valid bits per sample value, so we default to S16.

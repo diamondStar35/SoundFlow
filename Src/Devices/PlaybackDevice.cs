@@ -163,6 +163,9 @@ public abstract class PlaybackDevice : Device
     /// <param name="config">The device configuration.</param>
     protected PlaybackDevice(Engine engine, AudioFormat format, DeviceConfiguration config) : base(engine, format, config)
     {
+        format.ValidateChannelLayout();
+        if (format.Ambisonics != null)
+            throw new NotSupportedException("Decode Ambisonics before the speaker output device.");
         MasterMixer = new Mixer(engine, Format, isMasterMixer: true) { ParentDevice = this };
         CachedRenderEventArgs = new AudioFramesRenderedEventArgs(this, 0);
     }

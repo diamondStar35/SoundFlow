@@ -26,6 +26,7 @@ internal sealed unsafe partial class Context : IPreparedClips
 
     public PreparedClip Prepare(Clip clip)
     {
+        if (clip.Format.Ambisonics != null) throw new NotSupportedException("Prepared native clips require decoded speaker PCM.");
         ArgumentNullException.ThrowIfNull(clip);
         return Worker.Invoke<PreparedClip>(() =>
         {

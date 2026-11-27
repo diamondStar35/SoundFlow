@@ -18,6 +18,7 @@ public sealed class Clip
     /// <summary>Copies complete interleaved frames into an immutable clip.</summary>
     public Clip(ReadOnlySpan<float> samples, AudioFormat format)
     {
+        format.ValidateChannelLayout();
         if (format.Channels <= 0 || format.SampleRate <= 0 || samples.Length % format.Channels != 0)
             throw new ArgumentException("A clip requires a positive format and complete frames.", nameof(format));
         foreach (var sample in samples)
