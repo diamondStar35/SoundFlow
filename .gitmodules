@@ -2,3 +2,6 @@
 	path = Native/miniaudio-backend/miniaudio
 	url = https://github.com/mackron/miniaudio.git
 	branch = dev
+[submodule "Modules/SteamAudio.NET"]
+	path = Modules/SteamAudio.NET
+	url = https://github.com/diamondStar35/SteamAudio.NET.git
