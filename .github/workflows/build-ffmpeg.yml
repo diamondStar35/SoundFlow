@@ -62,7 +62,7 @@ jobs:
           cmake --build . --parallel --verbose
       - name: Verify native audio and network profile
         run: |
-          python ../../Scripts/verify-ffmpeg.py --library build/runtimes/win-${{ matrix.arch }}/native/soundflow-ffmpeg.dll --report build/runtimes/win-${{ matrix.arch }}/native/capabilities.json
+          python ../../Scripts/verify-ffmpeg.py --library build/runtimes/win-${{ matrix.arch }}/native/soundflow-ffmpeg.dll --report build/runtimes/win-${{ matrix.arch }}/native/ffmpeg/capabilities.json
       - name: Analyze Dependencies
         shell: msys2 {0}
         run: |
@@ -144,7 +144,7 @@ jobs:
       - name: Verify native audio and network profile
         if: matrix.arch == 'x64'
         run: |
-          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/linux-x64/native/libsoundflow-ffmpeg.so --report build/runtimes/linux-x64/native/capabilities.json
+          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/linux-x64/native/libsoundflow-ffmpeg.so --report build/runtimes/linux-x64/native/ffmpeg/capabilities.json
       - name: Analyze Dependencies
         run: |
           NM_CMD="nm"
@@ -195,7 +195,7 @@ jobs:
             os: macos-15-intel
             cmake_arch: x86_64
           - arch: arm64
-            os: macos-15
+            os: macos-15-intel
             cmake_arch: arm64
     runs-on: ${{ matrix.os }}
     defaults:
@@ -218,12 +218,14 @@ jobs:
           cd build
           cmake .. \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_SYSTEM_NAME=Darwin \
             -DCMAKE_OSX_ARCHITECTURES=${{ matrix.cmake_arch }} \
             -DCMAKE_SYSTEM_PROCESSOR=${{ matrix.cmake_arch }}
           cmake --build . --parallel --verbose
       - name: Verify native audio and network profile
+        if: matrix.arch == 'x64'
         run: |
-          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/osx-${{ matrix.arch }}/native/libsoundflow-ffmpeg.dylib --report build/runtimes/osx-${{ matrix.arch }}/native/capabilities.json
+          python3 ../../Scripts/verify-ffmpeg.py --library build/runtimes/osx-${{ matrix.arch }}/native/libsoundflow-ffmpeg.dylib --report build/runtimes/osx-${{ matrix.arch }}/native/ffmpeg/capabilities.json
       - name: Analyze Dependencies
         run: |
           ARTIFACT_DIR="build/runtimes/osx-${{ matrix.arch }}/native"
@@ -236,6 +238,7 @@ jobs:
               echo "=== File Info ==="
               file "$lib"
               lipo -info "$lib"
+              lipo -verify_arch ${{ matrix.cmake_arch }} "$lib"
               echo -e "\n=== Dependencies ==="
               otool -L "$lib"
               echo -e "\n=== Exports (Exported Functions) ==="

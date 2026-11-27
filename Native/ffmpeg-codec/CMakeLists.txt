@@ -3,9 +3,13 @@ project(SoundFlowFFmpeg C)
 
 cmake_policy(SET CMP0135 NEW)
 
-# LAME - Set macOS Deployment Target
+# Apple Silicon requires macOS 11; Intel retains the earlier minimum.
 if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13")
+    if(CMAKE_OSX_ARCHITECTURES STREQUAL "arm64")
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0")
+    else()
+        set(CMAKE_OSX_DEPLOYMENT_TARGET "10.13")
+    endif()
     message(STATUS "CMAKE_OSX_DEPLOYMENT_TARGET not set. Defaulting to ${CMAKE_OSX_DEPLOYMENT_TARGET}")
 endif()
 
@@ -349,7 +353,13 @@ endfunction()
 add_audio_dependency(ogg)
 add_audio_dependency(vorbis --disable-docs --disable-examples)
 add_dependencies(vorbis_dependency ogg_dependency)
-add_audio_dependency(opus --disable-doc --disable-extra-programs)
+# Opus 1.5 has no Windows ARM runtime CPU detector. ARM64 mandates NEON,
+# so select its baseline instructions at build time on that target.
+set(OPUS_PLATFORM_FLAGS "")
+if(TARGET_OS STREQUAL "win" AND TARGET_ARCH STREQUAL "arm64")
+    list(APPEND OPUS_PLATFORM_FLAGS --disable-rtcd)
+endif()
+add_audio_dependency(opus --disable-doc --disable-extra-programs ${OPUS_PLATFORM_FLAGS})
 set(AUDIO_DEPENDENCIES lame_dependency vorbis_dependency opus_dependency)
 if(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "android")
     string(JSON ssl_url GET "${AUDIO_PROFILE}" dependencies openssl url)
@@ -464,4 +474,25 @@ elseif(TARGET_OS STREQUAL "linux" OR TARGET_OS STREQUAL "freebsd")
 elseif(TARGET_OS STREQUAL "android")
     target_link_libraries(soundflow-ffmpeg PRIVATE m atomic)
     target_link_options(soundflow-ffmpeg PRIVATE "-Wl,-z,max-page-size=16384")
+endif()
+
+# Ship the build profile and the licenses of every statically linked dependency.
+add_custom_command(TARGET soundflow-ffmpeg POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${OUTPUT_DIR}/ffmpeg/notices"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../Packaging/FFmpeg.json" "${OUTPUT_DIR}/ffmpeg/profile.json")
+function(copy_audio_notice dependency file name)
+    ExternalProject_Get_Property(${dependency}_dependency SOURCE_DIR)
+    add_custom_command(TARGET soundflow-ffmpeg POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${SOURCE_DIR}/${file}" "${OUTPUT_DIR}/ffmpeg/notices/${name}")
+endfunction()
+copy_audio_notice(ffmpeg COPYING.LGPLv3 FFmpeg-LGPL-3.0.txt)
+copy_audio_notice(ffmpeg COPYING.GPLv3 FFmpeg-GPL-3.0.txt)
+copy_audio_notice(lame COPYING LAME.txt)
+copy_audio_notice(ogg COPYING Ogg.txt)
+copy_audio_notice(vorbis COPYING Vorbis.txt)
+copy_audio_notice(opus COPYING Opus.txt)
+if(TARGET openssl_dependency)
+    copy_audio_notice(openssl LICENSE.txt OpenSSL.txt)
 endif()
