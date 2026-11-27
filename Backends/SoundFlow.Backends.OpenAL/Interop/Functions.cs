@@ -88,6 +88,7 @@ internal sealed unsafe class Functions : IDisposable
     public readonly delegate* unmanaged[Cdecl]<nint, int, int, long*, void> alcGetInteger64vSOFT;
     public readonly delegate* unmanaged[Cdecl]<uint, long, void> alSourcePlayAtTimeSOFT;
     public readonly delegate* unmanaged[Cdecl]<int, uint*, long, void> alSourcePlayAtTimevSOFT;
+    public readonly delegate* unmanaged[Cdecl]<uint, int, int, delegate* unmanaged[Cdecl]<nint, void*, int, int>, nint, void> alBufferCallbackSOFT;
     public readonly delegate* unmanaged[Cdecl]<int, int*, byte, void> alEventControlSOFT;
     public readonly delegate* unmanaged[Cdecl]<delegate* unmanaged[Cdecl]<int, uint, uint, int, byte*, nint, void>, nint, void> alEventCallbackSOFT;
     public readonly delegate* unmanaged[Cdecl]<int, int, int> alcEventIsSupportedSOFT;
@@ -172,6 +173,7 @@ internal sealed unsafe class Functions : IDisposable
             alDebugMessageCallbackEXT = (delegate* unmanaged[Cdecl]<delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, nint, void>, nint, void>)FindExtension("alDebugMessageCallbackEXT");
             alDebugMessageControlEXT = (delegate* unmanaged[Cdecl]<int, int, int, int, uint*, byte, void>)FindExtension("alDebugMessageControlEXT");
             alDebugMessageInsertEXT = (delegate* unmanaged[Cdecl]<int, int, uint, int, int, byte*, void>)FindExtension("alDebugMessageInsertEXT");
+            alBufferCallbackSOFT = (delegate* unmanaged[Cdecl]<uint, int, int, delegate* unmanaged[Cdecl]<nint, void*, int, int>, nint, void>)FindExtension("alBufferCallbackSOFT");
             alObjectLabelEXT = (delegate* unmanaged[Cdecl]<int, uint, int, byte*, void>)FindExtension("alObjectLabelEXT");
             alGenEffects = (delegate* unmanaged[Cdecl]<int, uint*, void>)FindExtension("alGenEffects");
             alDeleteEffects = (delegate* unmanaged[Cdecl]<int, uint*, void>)FindExtension("alDeleteEffects");

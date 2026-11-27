@@ -23,7 +23,10 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     private readonly Action<float[], int> _publish;
     private readonly Action _ended;
     internal AudioFormat Format { get; }
-    internal AudioFormat RenderedFormat => IsPrepared ? Format : _pump.OutputFormat;
+    internal AudioFormat RenderedFormat => _render?.OutputFormat ?? (IsPrepared ? Format : _pump.OutputFormat);
+    internal AudioFormat ObservedFormat => IsPrepared ? Format : _pump.OutputFormat;
+    internal Chain? RenderProcessingChain => _render?.Processing.Definition;
+    internal RenderProcessingSnapshot? RenderProcessingState => _render?.GetSnapshot();
     internal Chain? ProcessingChain => IsPrepared ? null : _pump.Processing.Definition;
     private readonly Dictionary<uint, int[]> _positions = new();
     internal PlaybackDevice Device => _owner.Owner;
@@ -70,9 +73,14 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         _queued = new Queue<(uint, int, int)>(_buffers.Length);
         try
         {
+            format.ValidateChannelLayout();
+            if (format.Ambisonics != null && options?.RenderProcessing == null)
+                throw new NotSupportedException("Decode Ambisonics in the render chain before native playback.");
             if (provider.SampleRate != format.SampleRate) throw new ArgumentException("The source format must match its provider's sample rate.", nameof(format));
-            if (prepared != null && options?.Processing != null) throw new NotSupportedException("Prepared clips bypass software processing.");
-            _nativeFormat = FormatToken(format.Channels);
+            if (provider is GraphProvider && options?.RenderProcessing != null && options.RenderProcessing != Chain.Empty)
+                throw new NotSupportedException("Apply render processors to buffered graph leaves; select OnDemandGraph for the master graph bridge.");
+            if (prepared != null && (options?.Processing != null || options?.RenderProcessing != null)) throw new NotSupportedException("Prepared clips bypass software processing.");
+            _nativeFormat = options?.RenderProcessing == null ? FormatToken(format.Channels) : 0;
             if (prepared != null) Id = owner.RentPreparedSource();
             else { uint id; Al.alGenSources(1, &id); Id = id; Al.CheckAl("Allocate source"); owner.SourceAllocations++; }
             RefreshNativeIds();
@@ -83,10 +91,11 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
                 Al.CheckAl("Allocate queue buffers"); owner.BufferAllocations += _buffers.Length;
                 foreach (var buffer in _buffers) { _free.Enqueue(buffer); _positions.Add(buffer, new int[owner.Config.BufferFrames + 1]); }
                 var runner = (options?.Processing ?? Chain.Empty).CreateRunner(format with { Format = SampleFormat.F32 }, owner.Config.BufferFrames);
-                try { _nativeFormat = FormatToken(runner.OutputFormat.Channels); }
+                try { if (options?.RenderProcessing == null) _nativeFormat = FormatToken(runner.OutputFormat.Channels); }
                 catch { runner.Dispose(); throw; }
                 _pump = new DecodeSession(owner.Owner.Engine.Decoding, _transport, owner.Config.BufferFrames, _buffers.Length, ProcessPcm,
-                    provider is GraphProvider, owner.Offline && provider is GraphProvider graph ? graph.PrepareForRender : null, runner);
+                    provider is GraphProvider, owner.Offline && provider is GraphProvider graph ? graph.PrepareForRender : null, runner, renderConsumer: options?.RenderProcessing != null);
+                if (options?.RenderProcessing != null) InitializeCallback(options);
             }
             else
             {
@@ -95,12 +104,14 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
                 Al.CheckAl("Attach shared prepared clip");
                 ApplyRendering(new());
             }
-            ApplySpatial(new SourceSettings { Spatialize = spatial });
+            ApplySpatial(new SourceSettings { Spatialize = spatial, Relative = _render != null && !spatial, RolloffFactor = _render != null && !spatial ? 0 : 1 });
+            if (_render != null && !spatial && RenderedFormat.Channels >= 2) ApplyRendering(new() { ChannelMapping = Features.ChannelMapping.Direct });
             ApplySceneDistance(owner.DistanceModel);
             if (prepared != null) owner.RetainClip(prepared);
         }
         catch
         {
+            DisposeCallback();
             _pump?.Dispose();
             if (_pump == null) _transport?.Dispose();
             if (_buffers.Any(b => b != 0)) fixed (uint* pointers = _buffers) Al.alDeleteBuffers(_buffers.Length, pointers);
@@ -178,11 +189,17 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
         ValidateTransportControl();
         if (_failed) throw new InvalidOperationException("This voice failed and must be recreated. See backend notifications or diagnostics.");
         if (_state == PlaybackState.Playing) return;
+        if (_render != null && _state != PlaybackState.Paused)
+        {
+            _render.Suspend();
+            try { _render.Reset(_playedPosition); }
+            finally { _render.Resume(); }
+        }
         _onBeginning?.Invoke(); _playbackGeneration++;
         if (!IsPrepared)
         {
             _pump.ThrowIfFailed();
-            var restarting = _pump.Done;
+            var restarting = _pump.Done && _state != PlaybackState.Paused;
             _pump.Change(() =>
             {
                 if (restarting)
@@ -261,8 +278,12 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
             _ = FormatToken(runner.OutputFormat.Channels);
             foreach (var modifier in _modifiers) runner.AddModifier(modifier);
             Control(() => { FlushQueue(); ClearProcessingRoutes(); });
-            try { _pump.ReplaceProcessing(runner); }
-            finally { Control(() => _nativeFormat = FormatToken(_pump.OutputFormat.Channels)); }
+            try
+            {
+                if (_render == null) _pump.ReplaceProcessing(runner);
+                else _render.ReplaceProducer(runner);
+            }
+            finally { Control(() => _nativeFormat = FormatToken(RenderedFormat.Channels)); }
         }
         catch { if (!ReferenceEquals(_pump.Processing, runner)) runner.Dispose(); throw; }
     }
@@ -284,6 +305,12 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     internal void ResumeNative()
     {
         if (_preparing) return;
+        if (_render != null)
+        {
+            if (_state == PlaybackState.Playing && !ScheduledAt.HasValue && Al.SourceInteger(Id, 0x1010) != 0x1012)
+            { PlayNativeEndpoints(); _hasStarted = true; }
+            return;
+        }
         if (IsPrepared)
         {
             if (_state == PlaybackState.Playing && (!ScheduledAt.HasValue) && Al.SourceInteger(Id, 0x1010) != 0x1012)
@@ -294,11 +321,12 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     }
     internal void PauseNative()
     {
-        if (IsPrepared || _queued.Count > 0) { fixed (uint* ids = NativeIds) Al.alSourcePausev(NativeIds.Length, ids); Al.CheckAl("Pause source"); }
+        if (_render != null || IsPrepared || _queued.Count > 0) { fixed (uint* ids = NativeIds) Al.alSourcePausev(NativeIds.Length, ids); Al.CheckAl("Pause source"); }
     }
     internal void FillQueue(bool wait, bool running)
     {
         if (IsDisposed || _failed) return;
+        if (_render != null) { PollCallback(wait, running); return; }
         running &= !_preparing;
         if (IsPrepared) { FillPrepared(running); return; }
         var processed = Al.SourceInteger(Id, 0x1016);
@@ -364,6 +392,7 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
 
     private int AudiblePosition()
     {
+        if (_render != null) return _render.Position;
         if (IsPrepared) return _state == PlaybackState.Stopped ? _playedPosition : Al.SourceInteger(Id, 0x1025) * Format.Channels;
         if (_queued.Count == 0) return _playedPosition;
         var offset = Al.SourceInteger(Id, 0x1025);
@@ -376,15 +405,21 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
     }
     private void FlushQueue()
     {
-        fixed (uint* ids = NativeIds) Al.alSourceStopv(NativeIds.Length, ids);
-        foreach (var relay in _relays) relay.Flush();
-        if (IsPrepared) return;
-        while (_queued.Count > 0)
+        _render?.Suspend();
+        try
         {
-            uint buffer; Al.alSourceUnqueueBuffers(Id, 1, &buffer); _queued.Dequeue(); _free.Enqueue(buffer);
+            fixed (uint* ids = NativeIds) Al.alSourceStopv(NativeIds.Length, ids);
+            foreach (var relay in _relays) relay.Flush();
+            if (_render != null) { _render.Reset(_transport.SamplePosition); _callback?.Reset(); _hasStarted = false; return; }
+            if (IsPrepared) return;
+            while (_queued.Count > 0)
+            {
+                uint buffer; Al.alSourceUnqueueBuffers(Id, 1, &buffer); _queued.Dequeue(); _free.Enqueue(buffer);
+            }
+            Al.CheckAl("Flush stale source queue");
+            _hasStarted = false;
         }
-        Al.CheckAl("Flush stale source queue");
-        _hasStarted = false;
+        finally { _render?.Resume(); }
     }
     internal void Fail(Exception? error = null)
     {
@@ -407,7 +442,8 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
             void Attempt(Action action) { try { action(); } catch (Exception error) { (errors ??= []).Add(error); } }
             try
             {
-                Attempt(() => _pump?.Dispose());
+                Attempt(() => _owner.Worker.Invoke(FlushQueue));
+                Attempt(() => _pump?.Enable(false));
                 Attempt(() => _owner.Worker.Invoke(() =>
                 {
                     Attempt(FlushQueue); Attempt(ClearProcessingRoutes); Attempt(DisposeFilters);
@@ -420,13 +456,14 @@ internal sealed unsafe partial class Voice : IDisposable, ISourcePitch, IEffectS
                             else { var id = Id; Al.alDeleteSources(1, &id); }
                         }
                         else { var id = Id; Al.alDeleteSources(1, &id); }
+                        DisposeCallback();
                         if (_buffers.Length > 0) fixed (uint* buffers = _buffers) Al.alDeleteBuffers(_buffers.Length, buffers);
                         Al.CheckAl("Release source");
                     }
                     finally { if (_prepared != null) _owner.ReleaseClip(_prepared); _owner.Sources.Remove(this); }
                 }));
             }
-            finally { IsDisposed = true; if (_pump == null) Attempt(_transport.Dispose); }
+            finally { IsDisposed = true; Attempt(() => _pump?.Dispose()); if (_pump == null) Attempt(_transport.Dispose); }
             if (errors != null) throw new AggregateException("Source cleanup encountered errors.", errors);
         }
     }

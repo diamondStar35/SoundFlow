@@ -28,8 +28,10 @@ internal sealed unsafe partial class Voice
         if (IsPrepared) throw new NotSupportedException("Prepared clips have no software capture points.");
         if (index < 0 || index >= _owner.MaximumSends) throw new ArgumentOutOfRangeException(nameof(index));
         // Validate foreign points even when disconnecting, before touching either native path.
-        var format = _pump.Processing.GetFormat(point);
-        var delay = _pump.Processing.GetCompensationFrames(point, settings.Compensation);
+        var format = _render?.GetFormat(point) ?? _pump.Processing.GetFormat(point);
+        if (format.Ambisonics != null)
+            throw new NotSupportedException("Decode captured Ambisonics before routing it to a native speaker effect.");
+        var delay = _render?.GetCompensationFrames(point, settings.Compensation) ?? _pump.Processing.GetCompensationFrames(point, settings.Compensation);
         _ = FormatToken(format.Channels);
         Control(() =>
         {
@@ -83,6 +85,8 @@ internal sealed unsafe partial class Voice
         private readonly DelayLine _delay;
         private readonly float[] _scratch;
         private uint _mute;
+        private CallbackEndpoint? _callback;
+        private uint _callbackBuffer;
         private int _queued;
         internal Relay(Voice voice, Point point, AudioFormat format, LatencyCompensation compensation, int delay)
         {
@@ -96,7 +100,16 @@ internal sealed unsafe partial class Voice
                 _mute = voice.CreateFilter(new FilterSettings { Gain = 0 }, 1);
                 al.alSourcei(Id, 0x20005, (int)_mute);
                 al.alSourcef(Id, 0x100A, voice._gain); al.alSourcef(Id, 0x1003, voice._pitch);
-                foreach (var primary in voice._buffers)
+                if (voice._render != null)
+                {
+                    uint callbackBuffer;
+                    al.alGenBuffers(1, &callbackBuffer);
+                    _callbackBuffer = callbackBuffer;
+                    _callback = new(voice, callbackBuffer, format, voice._render.AddEndpoint(), point, delay);
+                    al.alSourcei(Id, 0x1009, (int)callbackBuffer);
+                    voice._owner.BufferAllocations++;
+                }
+                else foreach (var primary in voice._buffers)
                 {
                     uint buffer; al.alGenBuffers(1, &buffer); al.CheckAl("Allocate wet queue buffer");
                     _buffers.Add(primary, buffer); voice._owner.BufferAllocations++;
@@ -139,6 +152,7 @@ internal sealed unsafe partial class Voice
             _voice.Al.alSourceStop(Id);
             while (_queued > 0) Reclaim();
             _delay.Reset();
+            _callback?.Reset();
         }
         public void Dispose()
         {
@@ -148,6 +162,9 @@ internal sealed unsafe partial class Voice
                 Flush(); foreach (var index in Sends.Keys.ToArray()) Unbind(index);
                 al.alSourcei(Id, 0x20005, 0); var id = Id; al.alDeleteSources(1, &id); Id = 0;
             }
+            _callback?.Dispose();
+            _callback = null;
+            if (_callbackBuffer != 0) { var buffer = _callbackBuffer; al.alDeleteBuffers(1, &buffer); _callbackBuffer = 0; }
             foreach (var item in _buffers.Values) { var buffer = item; al.alDeleteBuffers(1, &buffer); }
             _buffers.Clear(); if (_mute != 0) { var filter = _mute; al.alDeleteFilters(1, &filter); _mute = 0; }
             al.CheckAl("Release wet endpoint");

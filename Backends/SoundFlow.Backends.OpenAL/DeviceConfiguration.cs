@@ -19,6 +19,12 @@ public sealed class DeviceConfiguration : CoreDeviceConfiguration
     public int BufferFrames { get; init; } = 512;
     /// <summary>Buffers per source; 4 by default. Must be 2 through 16.</summary>
     public int QueueBuffers { get; init; } = 4;
+    /// <summary>
+    /// Render the software master graph through AL_SOFT_callback_buffer instead of preparing native
+    /// queue buffers. Graph DSP must obey the render-callback contract; graph providers must be buffered.
+    /// Callback support is required when selected. Individually queued sources are unaffected.
+    /// </summary>
+    public bool OnDemandGraph { get; init; }
     /// <summary>Requested auxiliary sends per source; default 4. The actual limit is reported by SoundFlow.Effects.IEffects.</summary>
     public int AuxiliarySends { get; init; } = 4;
     /// <summary>Initial HRTF request. Automatic respects the implementation's configuration.</summary>

@@ -23,7 +23,7 @@ internal sealed class SpatialSource : CoreSpatialSource, INativeSource
         try
         {
             Voice = new Voice(context, provider, format, leaveOpen, true,
-                (samples, count) => PublishBuffer(samples.AsSpan(0, count), Voice!.RenderedFormat), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error), BeginPlayback, options);
+                (samples, count) => PublishBuffer(samples.AsSpan(0, count), Voice!.ObservedFormat), RaisePlaybackEnded, prepared, error => RaisePlaybackTerminated(PlaybackEndReason.Failed, error), BeginPlayback, options);
             context.Sources.Add(Voice);
             RegisterFeature<ISourcePitch>(Voice);
             RegisterFeature<ISourceRendering>(Voice);
@@ -36,6 +36,9 @@ internal sealed class SpatialSource : CoreSpatialSource, INativeSource
         catch { ReleaseProviderOwnership(); throw; }
     }
     public override SourceSettings Settings { get => Voice.Settings; set => Voice.Settings = value; }
+    public override SoundFlow.Processing.Chain? RenderProcessingChain => Voice.RenderProcessingChain;
+    public override SoundFlow.Processing.RenderProcessingSnapshot? RenderProcessingState => Voice.RenderProcessingState;
+    public override void ConfigureRenderProcessing(SoundFlow.Processing.Chain? chain) => Voice.ConfigureRenderProcessing(chain);
     public override AudioFormat RenderedFormat => Voice.RenderedFormat;
     public override SoundFlow.Processing.Chain? ProcessingChain => Voice.ProcessingChain;
     public override void ConfigureProcessing(SoundFlow.Processing.Chain? chain) => Voice.ConfigureProcessing(chain);

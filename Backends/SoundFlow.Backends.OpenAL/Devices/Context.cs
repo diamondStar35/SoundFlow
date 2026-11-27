@@ -66,7 +66,8 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         try
         {
             // The master mixer is one nonspatial graph feed, alongside individually spatialized native sources.
-            var graph = CreateSource(new GraphProvider(owner.MasterMixer, true), owner.Format, false);
+            var graph = CreateSource(new GraphProvider(owner.MasterMixer, true), owner.Format, false,
+                options: config.OnDemandGraph ? new SourceOptions { RenderProcessing = SoundFlow.Processing.Chain.Empty } : null);
             ((INativeSource)graph).Voice.IsGraphFeed = true;
             graph.Play();
         }
@@ -231,6 +232,9 @@ internal sealed unsafe partial class Context : IDisposable, IDiagnostics
         Backend = "OpenAL Soft", Library = $"{_version} ({Al.LibraryPath})", Device = _deviceName,
         Format = Owner.Format, Extensions = Array.AsReadOnly(_extensions), AuxiliarySends = MaximumSends,
         ProcessingEndpoints = Sources.Sum(s => s.ProcessingEndpoints),
+        OnDemandSources = Sources.Count(s => !s.IsGraphFeed && s.RenderProcessingState.HasValue),
+        RetainedRenderFrames = Sources.Sum(s => (long)(s.RenderProcessingState?.RetainedFrames ?? 0)),
+        RenderUnderruns = Sources.Sum(s => s.RenderProcessingState?.Underruns ?? 0),
         Sources = Sources.Count(s => !s.IsGraphFeed), EffectSlots = Slots.Count, Underruns = Sources.Sum(s => s.Underruns),
         Connected = Offline || !Al.HasAlcExtension(Device, "ALC_EXT_disconnect") || Al.DeviceInteger(Device, 0x313) != 0,
         HrtfStatus = HasHrtf ? HrtfStatus() : "Unavailable",

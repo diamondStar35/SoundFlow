@@ -20,7 +20,8 @@ namespace SoundFlow.Backends.OpenAL.Devices;
 /// <summary>Offline playback adapter. Only explicit Render calls advance its native device clock.</summary>
 internal sealed class RenderDevice : CoreRenderDevice
 {
-    public override ProcessingStage AvailableProcessingStages => ProcessingStage.GraphOutput | ProcessingStage.FinalOutput;
+    public override ProcessingStage AvailableProcessingStages => ProcessingStage.FinalOutput |
+        (Config is DeviceConfiguration { OnDemandGraph: true } ? ProcessingStage.None : ProcessingStage.GraphOutput);
     private readonly Context _context;
     private readonly object _renderGate = new();
     internal RenderDevice(Engine engine, AudioFormat format, DeviceConfiguration config) : base(engine, format, config)

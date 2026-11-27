@@ -20,7 +20,8 @@ namespace SoundFlow.Backends.OpenAL.Devices;
 /// <summary>Physical playback adapter. Its context owns all native rendering and resource state.</summary>
 internal sealed class PlaybackDevice : CorePlaybackDevice
 {
-    public override ProcessingStage AvailableProcessingStages => ProcessingStage.GraphOutput;
+    public override ProcessingStage AvailableProcessingStages => Config is DeviceConfiguration { OnDemandGraph: true }
+        ? ProcessingStage.None : ProcessingStage.GraphOutput;
     private readonly Context _context;
     internal PlaybackDevice(Engine engine, DeviceInfo? info, AudioFormat format, DeviceConfiguration config) : base(engine, format, config)
     {
